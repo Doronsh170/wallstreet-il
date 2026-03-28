@@ -1,0 +1,72 @@
+name: Update Wall Street IL
+
+on:
+  schedule:
+    # הכנה יומית: 13:00 UTC = 16:00 Israel (לפני פתיחת השוק)
+    - cron: '0 13 * * 1-5'
+    # סיכום יומי: 21:30 UTC = 00:30 Israel (אחרי סגירת השוק)
+    - cron: '30 21 * * 1-5'
+    # הכנה שבועית: יום ראשון 10:00 UTC = 13:00 Israel
+    - cron: '0 10 * * 0'
+    # סיכום שבועי: יום שישי 22:00 UTC = 01:00 שבת Israel
+    - cron: '0 22 * * 5'
+  workflow_dispatch:
+    inputs:
+      review_type:
+        description: 'Review type to generate'
+        required: true
+        default: 'daily_prep'
+        type: choice
+        options:
+          - daily_prep
+          - daily_summary
+          - weekly_prep
+          - weekly_summary
+          - events
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Determine review type from schedule
+        id: type
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "type=${{ github.event.inputs.review_type }}" >> $GITHUB_OUTPUT
+          else
+            HOUR=$(date -u +%H)
+            DOW=$(date -u +%u)  # 1=Mon, 7=Sun
+            if [ "$DOW" = "7" ]; then
+              echo "type=weekly_prep" >> $GITHUB_OUTPUT
+            elif [ "$DOW" = "5" ] && [ "$HOUR" -ge 21 ]; then
+              echo "type=weekly_summary" >> $GITHUB_OUTPUT
+            elif [ "$HOUR" -lt 15 ]; then
+              echo "type=daily_prep" >> $GITHUB_OUTPUT
+            else
+              echo "type=daily_summary" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Run update script
+        env:
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+          TWITTER_API_KEY: ${{ secrets.TWITTER_API_KEY }}
+          REVIEW_TYPE: ${{ steps.type.outputs.type }}
+        run: python scripts/update_data.py
+
+      - name: Commit and push changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data.json
+          git diff --staged --quiet || git commit -m "Update ${{ steps.type.outputs.type }} - $(date -u +%Y-%m-%dT%H:%M:%S)"
+          git push
