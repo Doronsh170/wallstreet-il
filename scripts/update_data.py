@@ -13,14 +13,20 @@ def fetch_tweets():
     for acc in ACCOUNTS:
         try:
             r = requests.get(
-                f"https://api.twitterapi.io/twitter/user/last_tweets?userName={acc}&count=10",
+                f"https://api.twitterapi.io/twitter/user/last_tweets?userName={acc}",
                 headers={"X-API-Key": TWITTER_API_KEY}
             )
+            print(f"  @{acc}: status={r.status_code}")
             if r.ok:
-                for t in r.json().get("tweets", []):
+                data = r.json()
+                tweets = data.get("tweets", [])
+                print(f"    -> {len(tweets)} tweets")
+                for t in tweets[:10]:
                     all_t.append(f"@{acc}: {t.get('text','')}")
+            else:
+                print(f"    -> Error: {r.text[:200]}")
         except Exception as e:
-            print(f"Error fetching {acc}: {e}")
+            print(f"  Error fetching {acc}: {e}")
     return "\n\n".join(all_t)
 
 def call_gemini(tweets, review_type, date_str, day_name):
