@@ -19,6 +19,8 @@ def fetch_tweets():
             print(f"  @{acc}: status={r.status_code}")
             if r.ok:
                 data = r.json()
+                print(f"    -> keys: {list(data.keys())}")
+                print(f"    -> raw snippet: {str(data)[:300]}")
                 tweets = data.get("tweets", [])
                 print(f"    -> {len(tweets)} tweets")
                 for t in tweets[:10]:
