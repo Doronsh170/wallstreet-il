@@ -65,7 +65,7 @@ def call_gemini(tweets, review_type, date_str, day_name):
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {
                 "temperature": 0.7,
-                "maxOutputTokens": 2000,
+                "maxOutputTokens": 8192,
                 "responseMimeType": "application/json"
             }
         }
@@ -96,7 +96,12 @@ def call_gemini(tweets, review_type, date_str, day_name):
     if text.endswith("```"):
         text = text[:-3]
     text = text.strip()
-    return json.loads(text)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as e:
+        print(f"  JSON parse error: {e}")
+        print(f"  Raw text (last 200 chars): ...{text[-200:]}")
+        raise
 
 def main():
     now = datetime.now(ISR_TZ)
