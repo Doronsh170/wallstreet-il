@@ -2,7 +2,7 @@ import json, os, requests
 from datetime import datetime, timezone, timedelta
 
 ISR_TZ = timezone(timedelta(hours=3))
-CLAUDE_API_KEY = os.environ["CLAUDE_API_KEY"]
+GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 TWITTER_API_KEY = os.environ["TWITTER_API_KEY"]
 REVIEW_TYPE = os.environ.get("REVIEW_TYPE", "daily_prep")
 
@@ -23,7 +23,7 @@ def fetch_tweets():
             print(f"Error fetching {acc}: {e}")
     return "\n\n".join(all_t)
 
-def call_claude(tweets, review_type, date_str, day_name):
+def call_gemini(tweets, review_type, date_str, day_name):
     prompt = f"""אתה אנליסט שוק ההון האמריקאי שכותב סקירות מקצועיות בעברית.
 סגנון: מקצועי, תמציתי, ברור. כמו ניוזלטר של בית השקעות מוביל.
 
@@ -41,27 +41,32 @@ def call_claude(tweets, review_type, date_str, day_name):
 פוסטים ממקורות (Twitter/X):
 {tweets}
 
-{"אם סוג הסקירה הוא events, צור JSON בפורמט: " + chr(123) + '"items":[' + chr(123) + '"time":"ISO8601","title":"שם בעברית","impact":"high/medium/low","description":"הסבר"' + chr(125) + ']' + chr(125) if review_type == "events" else ""}
-
-צור JSON (בלי backticks, בלי הסברים) בפורמט:
+צור JSON בפורמט הבא (בלי backticks, בלי הסברים, רק JSON טהור):
 {{"title":"כותרת הסקירה","date":"{date_str}","sections":[{{"heading":"כותרת סעיף","content":"תוכן הסעיף"}}]}}
 
-כלול 3 סעיפים רלוונטיים."""
+כלול 3 סעיפים רלוונטיים לסוג הסקירה:
+- daily_prep: פיוצ'רס ופרה-מרקט, אירועים מרכזיים היום, מה לעקוב אחריו
+- daily_summary: ביצועי מדדים, מניות בולטות, סנטימנט ומבט קדימה
+- weekly_prep: מבט כללי, אירועים מרכזיים בשבוע, רמות טכניות
+- weekly_summary: ביצועים שבועיים, סקטורים בולטים, מבט לשבוע הבא
 
-    r = requests.post("https://api.anthropic.com/v1/messages",
-        headers={
-            "x-api-key": CLAUDE_API_KEY,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json"
-        },
+ענה אך ורק ב-JSON טהור."""
+
+    r = requests.post(
+        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}",
+        headers={"Content-Type": "application/json"},
         json={
-            "model": "claude-haiku-4-5-20251001",
-            "max_tokens": 2000,
-            "messages": [{"role": "user", "content": prompt}]
-        })
-    
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "temperature": 0.7,
+                "maxOutputTokens": 2000,
+                "responseMimeType": "application/json"
+            }
+        }
+    )
+
     resp_data = r.json()
-    text = resp_data["content"][0]["text"]
+    text = resp_data["candidates"][0]["content"]["parts"][0]["text"]
     # Clean potential markdown
     text = text.strip()
     if text.startswith("```"):
@@ -74,7 +79,7 @@ def call_claude(tweets, review_type, date_str, day_name):
 def main():
     now = datetime.now(ISR_TZ)
     date_str = now.strftime("%Y-%m-%d")
-    
+
     py_to_heb = {0: "שני", 1: "שלישי", 2: "רביעי", 3: "חמישי", 4: "שישי", 5: "שבת", 6: "ראשון"}
     day_name = py_to_heb[now.weekday()]
 
@@ -86,8 +91,8 @@ def main():
         return
 
     print(f"Fetched {len(tweets.split(chr(10)+chr(10)))} tweet blocks")
-    
-    result = call_claude(tweets, REVIEW_TYPE, date_str, day_name)
+
+    result = call_gemini(tweets, REVIEW_TYPE, date_str, day_name)
 
     # Load existing data
     with open("data.json", "r", encoding="utf-8") as f:
