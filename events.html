@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>אירועים כלכליים – וול סטריט IL</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&family=Rubik:wght@400;500;700&display=swap" rel="stylesheet">
+  <script>tailwind.config={theme:{extend:{colors:{wall:{900:'#0a0c10',800:'#12151c',700:'#1a1e28',600:'#242936',gold:'#c9a84c',goldLight:'#e0c76a',green:'#22c55e',red:'#ef4444',muted:'#6b7280'}},fontFamily:{body:['Heebo','sans-serif'],heading:['Rubik','sans-serif']}}}}</script>
+  <style>body{font-family:'Heebo',sans-serif;background:#0a0c10}.pulse-dot{animation:pulse 2s ease-in-out infinite}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}.fade-in{animation:fadeIn .6s ease-out}@keyframes fadeIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}</style>
+</head>
+<body class="min-h-screen text-gray-200">
+  <div class="bg-wall-800 border-b border-wall-600"><div class="max-w-6xl mx-auto px-4 py-2 flex items-center justify-between text-xs text-wall-muted"><div id="marketStatusBar" class="flex items-center gap-2"><span class="pulse-dot w-2 h-2 rounded-full bg-wall-muted inline-block"></span><span>טוען...</span></div><div id="clockBar" class="font-mono"></div></div></div>
+  <header class="border-b border-wall-600 bg-wall-800/50 backdrop-blur"><div class="max-w-6xl mx-auto px-4 py-6"><div class="flex items-center justify-between"><div><a href="index.html" class="text-3xl font-heading font-bold text-white tracking-tight"><span class="text-wall-gold">וול סטריט</span> IL</a><p class="text-sm text-wall-muted mt-1">סקירות שוק ההון האמריקאי · בעברית · מבוסס AI</p></div><nav class="hidden md:flex items-center gap-1 text-sm"><a href="index.html" class="px-3 py-2 rounded-lg hover:bg-wall-700 text-gray-400 hover:text-white transition">ראשי</a><a href="daily-prep.html" class="px-3 py-2 rounded-lg hover:bg-wall-700 text-gray-400 hover:text-white transition">הכנה יומית</a><a href="daily-summary.html" class="px-3 py-2 rounded-lg hover:bg-wall-700 text-gray-400 hover:text-white transition">סיכום יומי</a><a href="weekly-prep.html" class="px-3 py-2 rounded-lg hover:bg-wall-700 text-gray-400 hover:text-white transition">הכנה שבועית</a><a href="weekly-summary.html" class="px-3 py-2 rounded-lg hover:bg-wall-700 text-gray-400 hover:text-white transition">סיכום שבועי</a><a href="events.html" class="px-3 py-2 rounded-lg bg-wall-700 text-wall-gold font-medium">אירועים</a></nav></div><nav class="md:hidden flex flex-wrap gap-2 mt-4 text-xs"><a href="index.html" class="px-3 py-1.5 rounded-lg bg-wall-800 text-gray-400">ראשי</a><a href="daily-prep.html" class="px-3 py-1.5 rounded-lg bg-wall-800 text-gray-400">הכנה יומית</a><a href="daily-summary.html" class="px-3 py-1.5 rounded-lg bg-wall-800 text-gray-400">סיכום יומי</a><a href="weekly-prep.html" class="px-3 py-1.5 rounded-lg bg-wall-800 text-gray-400">הכנה שבועית</a><a href="weekly-summary.html" class="px-3 py-1.5 rounded-lg bg-wall-800 text-gray-400">סיכום שבועי</a><a href="events.html" class="px-3 py-1.5 rounded-lg bg-wall-700 text-wall-gold">אירועים</a></nav></div></header>
+
+  <main class="max-w-4xl mx-auto px-4 py-8 fade-in">
+    <div class="mb-6">
+      <h1 class="text-2xl font-heading font-bold text-white flex items-center gap-3"><span class="text-3xl">⚡</span> אירועים כלכליים מהותיים</h1>
+      <p id="pageDate" class="text-sm text-wall-muted mt-1">טוען...</p>
+    </div>
+
+    <!-- Legend -->
+    <div class="flex items-center gap-4 mb-6 text-xs">
+      <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-wall-red inline-block"></span> השפעה גבוהה</span>
+      <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-wall-gold inline-block"></span> השפעה בינונית</span>
+      <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-wall-muted inline-block"></span> השפעה נמוכה</span>
+    </div>
+
+    <div id="contentArea" class="space-y-3"></div>
+
+    <div class="mt-8 text-xs text-wall-muted border-t border-wall-700 pt-4">
+      <p>מקורות: @AIStockSavvy, @wallstengine, @DeIaone, @StockMKTNewz, @zerohedge, @financialjuice</p>
+      <p class="mt-1">אין באמור ייעוץ השקעות או המלצה לפעולה בניירות ערך.</p>
+    </div>
+  </main>
+  <footer class="border-t border-wall-700 mt-12"><div class="max-w-6xl mx-auto px-4 py-6 text-center text-xs text-wall-muted">וול סטריט IL · סקירות שוק בעברית מבוססות AI</div></footer>
+
+  <script>
+    const ISRAEL_TZ='Asia/Jerusalem';function nowInIsrael(){return new Date(new Date().toLocaleString('en-US',{timeZone:ISRAEL_TZ}));}function updateClock(){const n=nowInIsrael();document.getElementById('clockBar').textContent=`${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}:${String(n.getSeconds()).padStart(2,'0')} IL`;}function getMarketStatus(holidays){const now=nowInIsrael(),day=now.getDay(),t=now.getHours()*60+now.getMinutes(),ds=now.toISOString().split('T')[0];if(day===6||day===0||(holidays||[]).includes(ds))return'closed';if(t>=16*60+30&&t<23*60)return'open';if(t>=23*60)return'afterhours';return'premarket';}function updateStatusBar(holidays){const st=getMarketStatus(holidays);const map={closed:{c:'bg-wall-red',t:'השוק סגור'},open:{c:'bg-wall-green',t:'השוק פתוח'},afterhours:{c:'bg-wall-gold',t:'After Hours'},premarket:{c:'bg-wall-gold',t:'פרה-מרקט'}};const s=map[st]||map.premarket;document.getElementById('marketStatusBar').innerHTML=`<span class="pulse-dot w-2 h-2 rounded-full ${s.c} inline-block"></span><span>${s.t}</span>`;}
+
+    function formatEventTime(isoStr) {
+      const d = new Date(isoStr);
+      const days = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+      const h = String(d.getHours()).padStart(2,'0');
+      const m = String(d.getMinutes()).padStart(2,'0');
+      const day = d.getDate();
+      const month = d.getMonth()+1;
+      return `יום ${days[d.getDay()]} ${day}/${month} · ${h}:${m}`;
+    }
+
+    function isPast(isoStr) {
+      return new Date(isoStr) < new Date();
+    }
+
+    async function init(){
+      try{
+        const resp=await fetch('data.json?_='+Date.now());const data=await resp.json();
+        updateStatusBar(data.marketStatus?.usHolidays2026||[]);
+        const events=data.events;
+        if(!events||!events.items?.length){document.getElementById('contentArea').innerHTML='<p class="text-wall-muted">אין אירועים מתוכננים.</p>';return;}
+        document.getElementById('pageDate').textContent=`עודכן: ${new Date(events.lastUpdated).toLocaleString('he-IL')}`;
+
+        const impactColors = { high:'bg-wall-red', medium:'bg-wall-gold', low:'bg-wall-muted' };
+        const impactBorders = { high:'border-wall-red/30', medium:'border-wall-gold/30', low:'border-wall-600' };
+        const impactLabels = { high:'גבוהה', medium:'בינונית', low:'נמוכה' };
+
+        document.getElementById('contentArea').innerHTML = events.items.map(ev => {
+          const past = isPast(ev.time);
+          const color = impactColors[ev.impact]||impactColors.low;
+          const border = impactBorders[ev.impact]||impactBorders.low;
+          return `
+            <div class="bg-wall-800 border ${border} rounded-xl p-5 ${past?'opacity-50':''}">
+              <div class="flex items-start gap-3">
+                <span class="mt-1 w-3 h-3 rounded-full ${color} shrink-0 ${past?'':'pulse-dot'}"></span>
+                <div class="flex-1">
+                  <div class="flex items-center justify-between flex-wrap gap-2">
+                    <h3 class="font-heading font-bold text-white">${ev.title}</h3>
+                    <span class="text-xs text-wall-muted font-mono">${formatEventTime(ev.time)}</span>
+                  </div>
+                  <p class="text-sm text-gray-400 mt-2">${ev.description}</p>
+                  <div class="flex items-center gap-2 mt-2 text-xs">
+                    <span class="px-2 py-0.5 rounded ${color}/20 text-gray-300">השפעה: ${impactLabels[ev.impact]||'נמוכה'}</span>
+                    ${past?'<span class="text-wall-muted">✓ עבר</span>':'<span class="text-wall-green">קרוב</span>'}
+                  </div>
+                </div>
+              </div>
+            </div>`;
+        }).join('');
+      }catch(e){console.error(e);}
+    }
+    init();updateClock();setInterval(updateClock,1000);
+  </script>
+</body>
+</html>
