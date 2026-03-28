@@ -72,7 +72,23 @@ def call_gemini(tweets, review_type, date_str, day_name):
     )
 
     resp_data = r.json()
-    text = resp_data["candidates"][0]["content"]["parts"][0]["text"]
+    print(f"  Gemini status: {r.status_code}")
+    
+    # Gemini 2.5-pro may have multiple parts (thinking + response)
+    candidate = resp_data.get("candidates", [{}])[0]
+    content = candidate.get("content", {})
+    parts = content.get("parts", [])
+    
+    # Find the text part (skip thinking parts)
+    text = ""
+    for part in parts:
+        if "text" in part:
+            text = part["text"]
+    
+    if not text:
+        print(f"  Gemini raw response: {str(resp_data)[:500]}")
+        raise Exception("Gemini returned no text")
+    
     # Clean potential markdown
     text = text.strip()
     if text.startswith("```"):
