@@ -8,6 +8,54 @@ REVIEW_TYPE = os.environ.get("REVIEW_TYPE", "daily_prep")
 
 ACCOUNTS = ["AIStockSavvy","wallstengine","DeIaone","StockMKTNewz","zerohedge","financialjuice"]
 
+PY_TO_HEB = {0: "שני", 1: "שלישי", 2: "רביעי", 3: "חמישי", 4: "שישי", 5: "שבת", 6: "ראשון"}
+
+def load_holidays():
+    """Load US holidays from data.json"""
+    try:
+        with open("data.json", "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data.get("marketStatus", {}).get("usHolidays2026", [])
+    except:
+        return []
+
+def is_trading_day(dt, holidays):
+    """Check if a date is a US trading day (Mon-Fri, not a holiday)"""
+    if dt.weekday() >= 5:  # Saturday=5, Sunday=6
+        return False
+    return dt.strftime("%Y-%m-%d") not in holidays
+
+def get_next_trading_day(now, holidays):
+    """Find the next trading day from now"""
+    d = now + timedelta(days=1)
+    for _ in range(10):
+        if is_trading_day(d, holidays):
+            return d
+        d += timedelta(days=1)
+    return now + timedelta(days=1)
+
+def get_last_trading_day(now, holidays):
+    """Find the most recent trading day (today if trading, else look back)"""
+    d = now
+    for _ in range(10):
+        if is_trading_day(d, holidays):
+            return d
+        d -= timedelta(days=1)
+    return now
+
+def get_week_range_str(now):
+    """Get the Mon-Fri date range for the current/most recent trading week.
+    If today is Sat/Sun, use the week that just ended (Mon-Fri).
+    If today is Mon-Fri, use this week's Mon-Fri."""
+    weekday = now.weekday()  # 0=Mon
+    if weekday >= 5:  # Weekend — refer to the week that just ended
+        days_since_monday = weekday  # Sat=5, Sun=6
+        monday = now - timedelta(days=days_since_monday)
+    else:
+        monday = now - timedelta(days=weekday)
+    friday = monday + timedelta(days=4)
+    return f"{monday.strftime('%d/%m')}–{friday.strftime('%d/%m/%Y')}"
+
 def fetch_tweets():
     all_t = []
     for acc in ACCOUNTS:
@@ -39,9 +87,25 @@ SHARED_RULES = """Rules:
 - Do NOT repeat the same information across sections. Each section must contain NEW content.
 - No buy/sell recommendations.
 - Start each section directly with the key fact. No generic opening sentences.
-- Output pure JSON only, no backticks, no explanations."""
+- Output pure JSON only, no backticks, no explanations.
 
-def get_prompt(tweets, review_type, date_str, day_name):
+CRITICAL — DATA ACCURACY:
+- ONLY use numbers, prices, percentages, and data points that explicitly appear in the source tweets/posts below.
+- NEVER invent, estimate, or recall prices from memory. If a specific price (gold, oil, index level, stock price) does not appear in the tweets, do NOT include it. Skip it or write "לא דווח".
+- If the tweets mention a percentage move but no absolute price, report only the percentage — do NOT guess the price.
+- Double-check every number you write: if you cannot point to a specific tweet that contains that number, remove it.
+- Getting a number wrong (e.g. writing $2,400 gold when it is actually $4,400) destroys credibility. When in doubt, omit."""
+
+def get_prompt(tweets, review_type, date_str, day_name, title_date_str=None, title_day_name=None, week_range=None):
+    """
+    date_str / day_name = when the script runs (today)
+    title_date_str / title_day_name = the trading day the title should reference
+    week_range = e.g. "24/03–28/03/2026" for weekly reviews
+    """
+    if not title_date_str:
+        title_date_str = date_str
+    if not title_day_name:
+        title_day_name = day_name
 
     tweets_block = f"Source tweets/posts from X (Twitter) — date: {date_str}:\n{tweets}"
 
@@ -71,7 +135,7 @@ Your task: Summarize what investors need to know before the US market opens, bas
 {tweets_block}
 
 Output JSON format:
-{{"title":"תדריך בוקר – {day_name} {date_str}","date":"{date_str}","sections":[{{"heading":"heading","content":"content"}}]}}
+{{"title":"הכנה ליום מסחר – יום {title_day_name} {title_date_str}","date":"{title_date_str}","sections":[{{"heading":"heading","content":"content"}}]}}
 
 Create exactly 3 sections:
 1. heading: "{overnight_heading}" — {overnight_desc}: futures levels (S&P, Nasdaq, Dow with exact numbers), Asia/Europe session moves, major news that broke after US close. Numbers only, no fluff.
@@ -88,7 +152,7 @@ Your task: Summarize the main events of {close_desc} on Wall Street, based on th
 {tweets_block}
 
 Output JSON format:
-{{"title":"סיכום יום מסחר – {day_name} {date_str}","date":"{date_str}","sections":[{{"heading":"heading","content":"content"}}]}}
+{{"title":"סיכום יום מסחר – יום {title_day_name} {title_date_str}","date":"{title_date_str}","sections":[{{"heading":"heading","content":"content"}}]}}
 
 Create exactly 3 sections:
 1. heading: "{close_heading}" — Index performance: S&P 500, Nasdaq, Dow, Russell 2000 with exact % changes and point levels. Trading volume vs average. VIX level and change. One sentence on the dominant theme that drove the session.
@@ -105,7 +169,7 @@ Your task: Based on the tweets/posts below, prepare investors for the trading we
 {tweets_block}
 
 Output JSON format:
-{{"title":"תחזית שבועית – {date_str}","date":"{date_str}","sections":[{{"heading":"heading","content":"content"}}]}}
+{{"title":"תחזית שבועית – {week_range if week_range else date_str}","date":"{date_str}","sections":[{{"heading":"heading","content":"content"}}]}}
 
 Create exactly 3 sections:
 1. heading: "הנושא המרכזי של השבוע" — The ONE dominant macro theme this week (Fed policy, earnings season, geopolitics, trade war, inflation data). Why it matters THIS week specifically. What is the market pricing in vs what could surprise? 2-3 sentences max, sharp and analytical.
@@ -122,7 +186,7 @@ Your task: Based on the tweets/posts below, summarize what happened in the US st
 {tweets_block}
 
 Output JSON format:
-{{"title":"סיכום שבועי – {date_str}","date":"{date_str}","sections":[{{"heading":"heading","content":"content"}}]}}
+{{"title":"סיכום שבועי – {week_range if week_range else date_str}","date":"{date_str}","sections":[{{"heading":"heading","content":"content"}}]}}
 
 Create exactly 3 sections:
 1. heading: "השבוע במספרים" — Weekly performance table: S&P 500, Nasdaq, Dow, Russell 2000 (weekly % change). Then: 10Y Treasury yield, US Dollar (DXY), WTI Oil, Gold — each with weekly change. Pure data, minimal commentary. This section is about NUMBERS.
@@ -205,11 +269,49 @@ def call_gemini(prompt):
 def main():
     now = datetime.now(ISR_TZ)
     date_str = now.strftime("%Y-%m-%d")
+    day_name = PY_TO_HEB[now.weekday()]
 
-    py_to_heb = {0: "שני", 1: "שלישי", 2: "רביעי", 3: "חמישי", 4: "שישי", 5: "שבת", 6: "ראשון"}
-    day_name = py_to_heb[now.weekday()]
+    # Load holidays for trading day calculations
+    holidays = load_holidays()
+    today_is_trading = is_trading_day(now, holidays)
 
-    print(f"Running {REVIEW_TYPE} for {date_str} ({day_name})")
+    print(f"Running {REVIEW_TYPE} for {date_str} ({day_name}), trading day: {today_is_trading}")
+
+    # ── Compute the correct title date for each review type ──
+    title_date_str = date_str
+    title_day_name = day_name
+    week_range = None
+
+    if REVIEW_TYPE == "daily_prep":
+        # Title should reference the NEXT trading day
+        if today_is_trading:
+            target = now  # today IS the trading day we're preparing for
+        else:
+            target = get_next_trading_day(now, holidays)
+        title_date_str = target.strftime("%Y-%m-%d")
+        title_day_name = PY_TO_HEB[target.weekday()]
+
+    elif REVIEW_TYPE == "daily_summary":
+        # Title should reference the LAST trading day
+        target = get_last_trading_day(now, holidays)
+        title_date_str = target.strftime("%Y-%m-%d")
+        title_day_name = PY_TO_HEB[target.weekday()]
+
+    elif REVIEW_TYPE in ("weekly_prep", "weekly_summary"):
+        week_range = get_week_range_str(now)
+
+    if REVIEW_TYPE == "weekly_prep":
+        # For weekly prep, compute next week's range
+        # Find next Monday
+        days_ahead = (0 - now.weekday()) % 7  # 0=Monday
+        if days_ahead == 0 and now.weekday() == 0:
+            next_monday = now  # already Monday
+        else:
+            next_monday = now + timedelta(days=days_ahead if days_ahead > 0 else 7)
+        next_friday = next_monday + timedelta(days=4)
+        week_range = f"{next_monday.strftime('%d/%m')}–{next_friday.strftime('%d/%m/%Y')}"
+
+    print(f"  Title date: {title_date_str} ({title_day_name}), week_range: {week_range}")
 
     tweets = fetch_tweets()
     if not tweets:
@@ -218,7 +320,10 @@ def main():
 
     print(f"Fetched {len(tweets.split(chr(10)+chr(10)))} tweet blocks")
 
-    prompt = get_prompt(tweets, REVIEW_TYPE, date_str, day_name)
+    prompt = get_prompt(tweets, REVIEW_TYPE, date_str, day_name,
+                        title_date_str=title_date_str,
+                        title_day_name=title_day_name,
+                        week_range=week_range)
     if not prompt:
         print(f"Unknown review type: {REVIEW_TYPE}")
         return
