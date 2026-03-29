@@ -24,12 +24,11 @@
     .gold-glow { box-shadow:0 0 20px rgba(201,168,76,0.15); }
     .card-hover { transition:all .25s ease; }
     .card-hover:hover { transform:translateY(-3px); box-shadow:0 8px 30px rgba(201,168,76,0.12); border-color:#c9a84c; }
-    .ticker-scroll { animation:scroll 40s linear infinite; }
-    @keyframes scroll { 0%{transform:translateX(100%)} 100%{transform:translateX(-100%)} }
     .pulse-dot { animation:pulse 2s ease-in-out infinite; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
     .fade-in { animation:fadeIn .6s ease-out; }
     @keyframes fadeIn { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+    .countdown-badge { font-variant-numeric: tabular-nums; }
   </style>
 </head>
 <body class="min-h-screen text-gray-200">
@@ -92,36 +91,48 @@
     <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
       
       <a href="daily-prep.html" class="card-hover block bg-wall-800 border border-wall-600 rounded-xl p-5">
-        <div class="flex items-center gap-2 mb-3">
-          <span class="text-xl">🌅</span>
-          <h3 class="font-heading font-bold text-white">הכנה ליום מסחר</h3>
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <span class="text-xl">🌅</span>
+            <h3 class="font-heading font-bold text-white">הכנה ליום מסחר</h3>
+          </div>
+          <div id="timer-dailyPrep" class="countdown-badge text-xs bg-wall-700 text-wall-goldLight px-2 py-1 rounded-lg"></div>
         </div>
         <p class="text-sm text-wall-muted mb-3">פיוצ'רס, פרה-מרקט, אירועים צפויים וניתוח טכני – הכל לפני הפתיחה.</p>
         <div id="dailyPrepDate" class="text-xs text-wall-gold">טוען...</div>
       </a>
 
       <a href="daily-summary.html" class="card-hover block bg-wall-800 border border-wall-600 rounded-xl p-5">
-        <div class="flex items-center gap-2 mb-3">
-          <span class="text-xl">🌙</span>
-          <h3 class="font-heading font-bold text-white">סיכום יום מסחר</h3>
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <span class="text-xl">🌙</span>
+            <h3 class="font-heading font-bold text-white">סיכום יום מסחר</h3>
+          </div>
+          <div id="timer-dailySummary" class="countdown-badge text-xs bg-wall-700 text-wall-goldLight px-2 py-1 rounded-lg"></div>
         </div>
         <p class="text-sm text-wall-muted mb-3">מה קרה היום: מדדים, מניות בולטות, סנטימנט ומבט קדימה.</p>
         <div id="dailySummaryDate" class="text-xs text-wall-gold">טוען...</div>
       </a>
 
       <a href="weekly-prep.html" class="card-hover block bg-wall-800 border border-wall-600 rounded-xl p-5">
-        <div class="flex items-center gap-2 mb-3">
-          <span class="text-xl">📋</span>
-          <h3 class="font-heading font-bold text-white">הכנה לשבוע מסחר</h3>
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <span class="text-xl">📋</span>
+            <h3 class="font-heading font-bold text-white">הכנה לשבוע מסחר</h3>
+          </div>
+          <div id="timer-weeklyPrep" class="countdown-badge text-xs bg-wall-700 text-wall-goldLight px-2 py-1 rounded-lg"></div>
         </div>
         <p class="text-sm text-wall-muted mb-3">אירועי השבוע, דוחות צפויים, רמות טכניות ומגמות מאקרו.</p>
         <div id="weeklyPrepDate" class="text-xs text-wall-gold">טוען...</div>
       </a>
 
       <a href="weekly-summary.html" class="card-hover block bg-wall-800 border border-wall-600 rounded-xl p-5">
-        <div class="flex items-center gap-2 mb-3">
-          <span class="text-xl">📊</span>
-          <h3 class="font-heading font-bold text-white">סיכום שבועי</h3>
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <span class="text-xl">📊</span>
+            <h3 class="font-heading font-bold text-white">סיכום שבועי</h3>
+          </div>
+          <div id="timer-weeklySummary" class="countdown-badge text-xs bg-wall-700 text-wall-goldLight px-2 py-1 rounded-lg"></div>
         </div>
         <p class="text-sm text-wall-muted mb-3">סיכום ביצועים שבועי, סקטורים מובילים ומבט לשבוע הבא.</p>
         <div id="weeklySummaryDate" class="text-xs text-wall-gold">טוען...</div>
@@ -157,7 +168,7 @@
   <!-- Footer -->
   <footer class="border-t border-wall-700 mt-12">
     <div class="max-w-6xl mx-auto px-4 py-6 text-center text-xs text-wall-muted">
-      <p>פותח ע״י דורון שרייבמן · סקירות שוק בעברית מבוססות AI</p>
+      <p>וול סטריט IL · סקירות שוק בעברית מבוססות AI</p>
       <p class="mt-1">אין באמור ייעוץ השקעות או המלצה לפעולה בניירות ערך.</p>
     </div>
   </footer>
@@ -165,7 +176,6 @@
   <script>
     // ===== SHARED MARKET UTILS =====
     const ISRAEL_TZ = 'Asia/Jerusalem';
-    const US_HOLIDAYS_2026 = [];
     let siteData = null;
 
     function nowInIsrael() {
@@ -181,56 +191,37 @@
 
     function getMarketStatus() {
       const now = nowInIsrael();
-      const day = now.getDay(); // 0=Sun, 6=Sat
+      const day = now.getDay();
       const h = now.getHours(), m = now.getMinutes();
       const timeMinutes = h * 60 + m;
       const dateStr = now.toISOString().split('T')[0];
-
-      // Check holidays
       const holidays = siteData?.marketStatus?.usHolidays2026 || [];
       const isHoliday = holidays.includes(dateStr);
 
-      // Weekend: Sat (6) or Sun (0)
       if (day === 6) return { status:'closed', color:'red', text:'השוק סגור – שבת', desc:'המסחר ייפתח ביום שני ב-16:30 שעון ישראל.' };
       if (day === 0) return { status:'closed', color:'red', text:'השוק סגור – יום ראשון', desc:'המסחר ייפתח מחר (שני) ב-16:30 שעון ישראל.' };
       if (isHoliday) return { status:'closed', color:'red', text:'השוק סגור – חג אמריקאי', desc:'המסחר מושבת בשל חג בארה"ב.' };
 
-      // Market hours Israel: 16:30 (990min) - 23:00 (1380min)
-      const preMarketStart = 10 * 60; // 10:00
-      const marketOpen = 16 * 60 + 30; // 16:30
-      const marketClose = 23 * 60; // 23:00
+      const marketOpen = 16 * 60 + 30;
+      const marketClose = 23 * 60;
+      const preMarketStart = 10 * 60;
 
-      if (timeMinutes >= marketOpen && timeMinutes < marketClose) {
-        return { status:'open', color:'green', text:'השוק פתוח', desc:`המסחר פעיל. סגירה ב-23:00 שעון ישראל.` };
-      }
-      if (timeMinutes >= preMarketStart && timeMinutes < marketOpen) {
-        return { status:'premarket', color:'gold', text:'פרה-מרקט פעיל', desc:`מסחר לפני הפתיחה. פתיחה רשמית ב-16:30.` };
-      }
-      if (timeMinutes >= marketClose) {
-        return { status:'afterhours', color:'gold', text:'מסחר אחרי שעות (After Hours)', desc:'המסחר הרגיל הסתיים. מסחר After Hours פעיל.' };
-      }
-      // Before premarket
-      return { status:'waiting', color:'muted', text:'השוק עדיין לא נפתח', desc:`פרה-מרקט מ-10:00, פתיחה ב-16:30 שעון ישראל.` };
+      if (timeMinutes >= marketOpen && timeMinutes < marketClose) return { status:'open', color:'green', text:'השוק פתוח', desc:'המסחר פעיל. סגירה ב-23:00 שעון ישראל.' };
+      if (timeMinutes >= preMarketStart && timeMinutes < marketOpen) return { status:'premarket', color:'gold', text:'פרה-מרקט פעיל', desc:'מסחר לפני הפתיחה. פתיחה רשמית ב-16:30.' };
+      if (timeMinutes >= marketClose) return { status:'afterhours', color:'gold', text:'מסחר אחרי שעות (After Hours)', desc:'המסחר הרגיל הסתיים. מסחר After Hours פעיל.' };
+      return { status:'waiting', color:'muted', text:'השוק עדיין לא נפתח', desc:'פרה-מרקט מ-10:00, פתיחה ב-16:30 שעון ישראל.' };
     }
 
     function updateClock() {
       const now = nowInIsrael();
-      const h = String(now.getHours()).padStart(2,'0');
-      const m = String(now.getMinutes()).padStart(2,'0');
-      const s = String(now.getSeconds()).padStart(2,'0');
-      document.getElementById('clockBar').textContent = `${h}:${m}:${s} IL`;
+      document.getElementById('clockBar').textContent = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')} IL`;
     }
 
     function updateMarketStatus() {
       const ms = getMarketStatus();
       const colorMap = { green:'bg-wall-green', red:'bg-wall-red', gold:'bg-wall-gold', muted:'bg-wall-muted' };
-      
-      // Top bar
       const bar = document.getElementById('marketStatusBar');
-      if (bar) {
-        bar.innerHTML = `<span class="pulse-dot w-2 h-2 rounded-full ${colorMap[ms.color]} inline-block"></span><span>${ms.text}</span>`;
-      }
-      // Hero
+      if (bar) bar.innerHTML = `<span class="pulse-dot w-2 h-2 rounded-full ${colorMap[ms.color]} inline-block"></span><span>${ms.text}</span>`;
       const heroText = document.getElementById('heroStatusText');
       const heroDot = document.getElementById('heroStatusDot');
       const heroDesc = document.getElementById('heroStatusDesc');
@@ -239,12 +230,102 @@
       if (heroDesc) heroDesc.textContent = ms.desc;
     }
 
+    // ===== COUNTDOWN TIMERS =====
+    // Schedule (Israel time):
+    // dailyPrep:     Mon-Fri 14:30
+    // dailySummary:   Mon-Fri 23:30
+    // weeklyPrep:     Sunday 13:00
+    // weeklySummary:  Saturday 01:00
+
+    function getIsraelParts() {
+      // Robust: extract day/hour/min/sec directly via Intl
+      const fmt = new Intl.DateTimeFormat('en-US', {
+        timeZone: ISRAEL_TZ,
+        hour12: false,
+        weekday: 'short', year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit'
+      });
+      const parts = {};
+      fmt.formatToParts(new Date()).forEach(p => parts[p.type] = p.value);
+      const dayMap = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6 };
+      return {
+        day: dayMap[parts.weekday] ?? 0,
+        h: parseInt(parts.hour),
+        m: parseInt(parts.minute),
+        s: parseInt(parts.second)
+      };
+    }
+
+    function secsUntilNext(type) {
+      const { day, h, m, s } = getIsraelParts();
+      const nowSecs = h * 3600 + m * 60 + s;
+
+      // For a given target day (0-6) and time, calc seconds from now
+      function secsTo(targetDay, targetH, targetM) {
+        let daysAhead = (targetDay - day + 7) % 7;
+        const targetSecs = targetH * 3600 + targetM * 60;
+        if (daysAhead === 0 && targetSecs <= nowSecs) daysAhead = 7; // already passed today
+        return daysAhead * 86400 + (targetSecs - nowSecs);
+      }
+
+      if (type === 'dailyPrep') {
+        // Mon(1)-Fri(5) at 14:30 — find nearest
+        let best = Infinity;
+        for (let d = 1; d <= 5; d++) {
+          best = Math.min(best, secsTo(d, 14, 30));
+        }
+        return best;
+      }
+
+      if (type === 'dailySummary') {
+        // Mon(1)-Fri(5) at 23:30
+        let best = Infinity;
+        for (let d = 1; d <= 5; d++) {
+          best = Math.min(best, secsTo(d, 23, 30));
+        }
+        return best;
+      }
+
+      if (type === 'weeklyPrep') {
+        return secsTo(0, 13, 0); // Sunday 13:00
+      }
+
+      if (type === 'weeklySummary') {
+        return secsTo(6, 1, 0); // Saturday 01:00
+      }
+
+      return null;
+    }
+
+    function formatCountdown(totalSec) {
+      if (totalSec <= 0) return 'מתעדכן עכשיו...';
+      const d = Math.floor(totalSec / 86400);
+      const h = Math.floor((totalSec % 86400) / 3600);
+      const m = Math.floor((totalSec % 3600) / 60);
+      const s = totalSec % 60;
+
+      if (d > 0) return `${d}ד׳ ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+      return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    }
+
+    function updateTimers() {
+      const types = ['dailyPrep','dailySummary','weeklyPrep','weeklySummary'];
+      types.forEach(type => {
+        const el = document.getElementById('timer-' + type);
+        if (!el) return;
+        const secs = secsUntilNext(type);
+        if (secs === null) { el.textContent = ''; return; }
+        el.textContent = '⏱ ' + formatCountdown(secs);
+      });
+    }
+
     async function loadData() {
       try {
         const resp = await fetch('data.json?_=' + Date.now());
         siteData = await resp.json();
         updateMarketStatus();
-        // Update card dates
+        updateTimers();
+
         if (siteData.dailyPrep?.date) {
           const el = document.getElementById('dailyPrepDate');
           if (el) el.textContent = `עודכן: ${formatHebrewDate(siteData.dailyPrep.date)}`;
@@ -274,6 +355,7 @@
     loadData();
     updateClock();
     setInterval(updateClock, 1000);
+    setInterval(updateTimers, 1000);
     setInterval(updateMarketStatus, 30000);
   </script>
 </body>
