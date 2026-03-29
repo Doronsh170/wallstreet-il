@@ -96,7 +96,7 @@
             <span class="text-xl">🌅</span>
             <h3 class="font-heading font-bold text-white">הכנה ליום מסחר</h3>
           </div>
-          <div id="timer-dailyPrep" class="countdown-badge text-xs bg-wall-700 text-wall-goldLight px-2 py-1 rounded-lg" dir="ltr"></div>
+          <div id="timer-dailyPrep" class="countdown-badge text-xs bg-wall-700 text-wall-goldLight px-2 py-1 rounded-lg"></div>
         </div>
         <p class="text-sm text-wall-muted mb-3">פיוצ'רס, פרה-מרקט, אירועים צפויים וניתוח טכני – הכל לפני הפתיחה.</p>
         <div id="dailyPrepDate" class="text-xs text-wall-gold">טוען...</div>
@@ -108,7 +108,7 @@
             <span class="text-xl">🌙</span>
             <h3 class="font-heading font-bold text-white">סיכום יום מסחר</h3>
           </div>
-          <div id="timer-dailySummary" class="countdown-badge text-xs bg-wall-700 text-wall-goldLight px-2 py-1 rounded-lg" dir="ltr"></div>
+          <div id="timer-dailySummary" class="countdown-badge text-xs bg-wall-700 text-wall-goldLight px-2 py-1 rounded-lg"></div>
         </div>
         <p class="text-sm text-wall-muted mb-3">מה קרה היום: מדדים, מניות בולטות, סנטימנט ומבט קדימה.</p>
         <div id="dailySummaryDate" class="text-xs text-wall-gold">טוען...</div>
@@ -120,7 +120,7 @@
             <span class="text-xl">📋</span>
             <h3 class="font-heading font-bold text-white">הכנה לשבוע מסחר</h3>
           </div>
-          <div id="timer-weeklyPrep" class="countdown-badge text-xs bg-wall-700 text-wall-goldLight px-2 py-1 rounded-lg" dir="ltr"></div>
+          <div id="timer-weeklyPrep" class="countdown-badge text-xs bg-wall-700 text-wall-goldLight px-2 py-1 rounded-lg"></div>
         </div>
         <p class="text-sm text-wall-muted mb-3">אירועי השבוע, דוחות צפויים, רמות טכניות ומגמות מאקרו.</p>
         <div id="weeklyPrepDate" class="text-xs text-wall-gold">טוען...</div>
@@ -132,7 +132,7 @@
             <span class="text-xl">📊</span>
             <h3 class="font-heading font-bold text-white">סיכום שבועי</h3>
           </div>
-          <div id="timer-weeklySummary" class="countdown-badge text-xs bg-wall-700 text-wall-goldLight px-2 py-1 rounded-lg" dir="ltr"></div>
+          <div id="timer-weeklySummary" class="countdown-badge text-xs bg-wall-700 text-wall-goldLight px-2 py-1 rounded-lg"></div>
         </div>
         <p class="text-sm text-wall-muted mb-3">סיכום ביצועים שבועי, סקטורים מובילים ומבט לשבוע הבא.</p>
         <div id="weeklySummaryDate" class="text-xs text-wall-gold">טוען...</div>
@@ -316,7 +316,7 @@
         if (!el) return;
         const info = getNextUpdateInfo(type);
         if (!info) { el.textContent = ''; return; }
-        el.textContent = `${info.dayName} ${info.time} · ${formatRelative(info.secs)}`;
+        el.textContent = `עדכון הבא: ${info.dayName} ${info.time} · ${formatRelative(info.secs)}`;
       });
     }
 
