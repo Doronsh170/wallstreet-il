@@ -7,76 +7,79 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&family=Rubik:wght@400;500;700&display=swap" rel="stylesheet">
   <script>
-    tailwind.config = { theme: { extend: { colors: { wall: { 900:'#0a0c10', 800:'#12151c', 700:'#1a1e28', 600:'#242936', gold:'#c9a84c', goldLight:'#e0c76a', green:'#22c55e', red:'#ef4444', muted:'#6b7280' } }, fontFamily: { body:['Heebo','sans-serif'], heading:['Rubik','sans-serif'] } } } }
+    tailwind.config = { theme: { extend: { colors: { wall: { 50:'#f7f8fc',100:'#eef0f6',200:'#e2e5ec',300:'#cbd0db',400:'#94a3b8',500:'#64748b',600:'#475569',700:'#334155',800:'#1e293b',900:'#0f172a',gold:'#9a7b2d',goldLight:'#b8942f',goldBg:'#fdf8ed',goldBorder:'#e8d5a0',green:'#16a34a',greenBg:'#ecfdf5',red:'#dc2626',redBg:'#fef2f2',navy:'#1a2332' } }, fontFamily: { body:['Heebo','sans-serif'], heading:['Rubik','sans-serif'] } } } }
   </script>
   <style>
-    body { font-family:'Heebo',sans-serif; background:#0a0c10; }
+    body { font-family:'Heebo',sans-serif; background:#f0f2f7; }
     .pulse-dot { animation:pulse 2s ease-in-out infinite; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
     .fade-in { animation:fadeIn .6s ease-out; }
     @keyframes fadeIn { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
   </style>
 </head>
-<body class="min-h-screen text-gray-200">
-  <div class="bg-wall-800 border-b border-wall-600">
-    <div class="max-w-6xl mx-auto px-4 py-2 flex items-center justify-between text-xs text-wall-muted">
-      <div id="marketStatusBar" class="flex items-center gap-2"><span class="pulse-dot w-2 h-2 rounded-full bg-wall-muted inline-block"></span><span>טוען...</span></div>
+<body class="min-h-screen text-wall-800">
+  <div class="bg-wall-navy">
+    <div class="max-w-6xl mx-auto px-4 py-2 flex items-center justify-between text-xs text-gray-300">
+      <div id="marketStatusBar" class="flex items-center gap-2"><span class="pulse-dot w-2 h-2 rounded-full bg-gray-400 inline-block"></span><span>טוען...</span></div>
       <div id="clockBar" class="font-mono"></div>
     </div>
   </div>
-  <header class="border-b border-wall-600 bg-wall-800/50 backdrop-blur">
+  <header class="border-b border-wall-200 bg-white/90 backdrop-blur shadow-sm">
     <div class="max-w-6xl mx-auto px-4 py-6">
       <div class="flex items-center justify-between">
         <div>
-          <a href="index.html" class="text-3xl font-heading font-bold text-white tracking-tight"><span class="text-wall-gold">וול סטריט</span> IL</a>
-          <p class="text-sm text-wall-muted mt-1">סקירות שוק ההון האמריקאי · בעברית · מבוסס AI</p>
+          <a href="index.html" class="text-3xl font-heading font-bold text-wall-900 tracking-tight"><span class="text-wall-gold">וול סטריט</span> IL</a>
+          <p class="text-sm text-wall-500 mt-1">סקירות שוק ההון האמריקאי · בעברית · מבוסס AI</p>
         </div>
         <nav class="hidden md:flex items-center gap-1 text-sm">
-          <a href="index.html" class="px-3 py-2 rounded-lg hover:bg-wall-700 text-gray-400 hover:text-white transition">ראשי</a>
-          <a href="daily-prep.html" class="px-3 py-2 rounded-lg hover:bg-wall-700 text-gray-400 hover:text-white transition">הכנה יומית</a>
-          <a href="daily-summary.html" class="px-3 py-2 rounded-lg bg-wall-700 text-wall-gold font-medium">סיכום יומי</a>
-          <a href="weekly-prep.html" class="px-3 py-2 rounded-lg hover:bg-wall-700 text-gray-400 hover:text-white transition">הכנה שבועית</a>
-          <a href="weekly-summary.html" class="px-3 py-2 rounded-lg hover:bg-wall-700 text-gray-400 hover:text-white transition">סיכום שבועי</a>
-          <a href="events.html" class="px-3 py-2 rounded-lg hover:bg-wall-700 text-gray-400 hover:text-white transition">אירועים</a>
+          <a href="index.html" class="px-3 py-2 rounded-lg hover:bg-wall-100 text-wall-600 hover:text-wall-900 transition">ראשי</a>
+          <a href="daily-prep.html" class="px-3 py-2 rounded-lg hover:bg-wall-100 text-wall-600 hover:text-wall-900 transition">הכנה יומית</a>
+          <a href="daily-summary.html" class="px-3 py-2 rounded-lg bg-wall-goldBg text-wall-gold font-medium border border-wall-goldBorder">סיכום יומי</a>
+          <a href="weekly-prep.html" class="px-3 py-2 rounded-lg hover:bg-wall-100 text-wall-600 hover:text-wall-900 transition">הכנה שבועית</a>
+          <a href="weekly-summary.html" class="px-3 py-2 rounded-lg hover:bg-wall-100 text-wall-600 hover:text-wall-900 transition">סיכום שבועי</a>
+          <a href="events.html" class="px-3 py-2 rounded-lg hover:bg-wall-100 text-wall-600 hover:text-wall-900 transition">אירועים</a>
         </nav>
       </div>
       <nav class="md:hidden flex flex-wrap gap-2 mt-4 text-xs">
-        <a href="index.html" class="px-3 py-1.5 rounded-lg bg-wall-800 text-gray-400">ראשי</a>
-        <a href="daily-prep.html" class="px-3 py-1.5 rounded-lg bg-wall-800 text-gray-400">הכנה יומית</a>
-        <a href="daily-summary.html" class="px-3 py-1.5 rounded-lg bg-wall-700 text-wall-gold">סיכום יומי</a>
-        <a href="weekly-prep.html" class="px-3 py-1.5 rounded-lg bg-wall-800 text-gray-400">הכנה שבועית</a>
-        <a href="weekly-summary.html" class="px-3 py-1.5 rounded-lg bg-wall-800 text-gray-400">סיכום שבועי</a>
-        <a href="events.html" class="px-3 py-1.5 rounded-lg bg-wall-800 text-gray-400">אירועים</a>
+        <a href="index.html" class="px-3 py-1.5 rounded-lg bg-wall-100 text-wall-600">ראשי</a>
+        <a href="daily-prep.html" class="px-3 py-1.5 rounded-lg bg-wall-100 text-wall-600">הכנה יומית</a>
+        <a href="daily-summary.html" class="px-3 py-1.5 rounded-lg bg-wall-goldBg text-wall-gold border border-wall-goldBorder">סיכום יומי</a>
+        <a href="weekly-prep.html" class="px-3 py-1.5 rounded-lg bg-wall-100 text-wall-600">הכנה שבועית</a>
+        <a href="weekly-summary.html" class="px-3 py-1.5 rounded-lg bg-wall-100 text-wall-600">סיכום שבועי</a>
+        <a href="events.html" class="px-3 py-1.5 rounded-lg bg-wall-100 text-wall-600">אירועים</a>
       </nav>
     </div>
   </header>
 
   <main class="max-w-4xl mx-auto px-4 py-8 fade-in">
     <div class="mb-6">
-      <h1 class="text-2xl font-heading font-bold text-white flex items-center gap-3">
+      <h1 class="text-2xl font-heading font-bold text-wall-900 flex items-center gap-3">
         <span class="text-3xl">🌙</span> סיכום יום מסחר
       </h1>
-      <p id="pageDate" class="text-sm text-wall-muted mt-1">טוען...</p>
+      <p id="pageDate" class="text-sm text-wall-500 mt-1">טוען...</p>
     </div>
 
-    <div id="timeWarning" class="hidden bg-wall-gold/10 border border-wall-gold/30 rounded-xl p-4 mb-6">
-      <p class="text-wall-goldLight text-sm font-medium">⏳ השוק עדיין פתוח – הסיכום יתעדכן לאחר סגירת המסחר ב-23:00.</p>
+    <div id="timeWarning" class="hidden bg-wall-goldBg border border-wall-goldBorder rounded-xl p-4 mb-6">
+      <p class="text-wall-gold text-sm font-medium">⏳ השוק עדיין פתוח – הסיכום יתעדכן לאחר סגירת המסחר ב-23:00.</p>
     </div>
 
-    <div id="noTradeWarning" class="hidden bg-wall-red/10 border border-wall-red/30 rounded-xl p-4 mb-6">
+    <div id="noTradeWarning" class="hidden bg-wall-redBg border border-red-200 rounded-xl p-4 mb-6">
       <p class="text-wall-red text-sm font-medium">📅 אין מסחר היום – מוצג סיכום יום המסחר האחרון.</p>
     </div>
 
     <div id="contentArea" class="space-y-4"></div>
 
-    <div class="mt-8 text-xs text-wall-muted border-t border-wall-700 pt-4">
+    <div class="mt-8 text-xs text-wall-400 border-t border-wall-200 pt-4">
       <p>מקורות: @AIStockSavvy, @wallstengine, @DeIaone, @StockMKTNewz, @zerohedge, @financialjuice</p>
       <p class="mt-1">אין באמור ייעוץ השקעות או המלצה לפעולה בניירות ערך.</p>
     </div>
   </main>
 
-  <footer class="border-t border-wall-700 mt-12">
-    <div class="max-w-6xl mx-auto px-4 py-6 text-center text-xs text-wall-muted">וול סטריט IL · סקירות שוק בעברית מבוססות AI</div>
+  <footer class="border-t border-wall-200 mt-12 bg-white/50">
+    <div class="max-w-6xl mx-auto px-4 py-6 text-center text-xs text-wall-500">
+      <p>וול סטריט IL · סקירות שוק בעברית מבוססות AI</p>
+      <p class="mt-2 text-wall-400">פותח ע"י דורון שרייבמן</p>
+    </div>
   </footer>
 
   <script>
@@ -92,12 +95,12 @@
         const holidays=data.marketStatus?.usHolidays2026||[];
         updateStatusBar(holidays);
         const section=data.dailySummary;
-        if(!section){document.getElementById('contentArea').innerHTML='<p class="text-wall-muted">אין נתונים זמינים.</p>';return;}
+        if(!section){document.getElementById('contentArea').innerHTML='<p class="text-wall-400">אין נתונים זמינים.</p>';return;}
         document.getElementById('pageDate').textContent=section.title;
         const st=getMarketStatus(holidays);
         if(st==='closed'){const now=nowInIsrael();if(now.getDay()===6||now.getDay()===0)document.getElementById('noTradeWarning').classList.remove('hidden');}
         if(st==='open')document.getElementById('timeWarning').classList.remove('hidden');
-        document.getElementById('contentArea').innerHTML=section.sections.map(s=>`<div class="bg-wall-800 border border-wall-600 rounded-xl p-5"><h2 class="font-heading font-bold text-wall-gold mb-3">${s.heading}</h2><p class="text-gray-300 leading-relaxed">${s.content}</p></div>`).join('');
+        document.getElementById('contentArea').innerHTML=section.sections.map(s=>`<div class="bg-white border border-wall-200 rounded-xl p-5 shadow-sm"><h2 class="font-heading font-bold text-wall-gold mb-3">${s.heading}</h2><p class="text-wall-700 leading-relaxed">${s.content}</p></div>`).join('');
       }catch(e){console.error(e);}
     }
     init();updateClock();setInterval(updateClock,1000);
