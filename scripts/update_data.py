@@ -45,10 +45,26 @@ def get_prompt(tweets, review_type, date_str, day_name):
 
     tweets_block = f"Source tweets/posts from X (Twitter) — date: {date_str}:\n{tweets}"
 
+    # Day-aware headings
+    is_non_trading = day_name in ["שישי", "שבת", "ראשון"]
+
+    # daily_prep headings
+    overnight_heading = "מה קרה בסוף השבוע" if is_non_trading else "מה קרה בלילה"
+    market_today_heading = "מה יזיז את השוק ביום המסחר הקרוב" if is_non_trading else "מה יזיז את השוק היום"
+    overnight_desc = "Key developments over the weekend" if is_non_trading else "Key overnight developments"
+    today_catalysts = "Next trading day's catalysts" if is_non_trading else "Today's catalysts"
+    today_ref = "the next trading day" if is_non_trading else "today"
+
+    # daily_summary headings
+    close_heading = "כך נסגר יום המסחר האחרון" if is_non_trading else "כך נסגר היום"
+    tomorrow_heading = "מה זה אומר ליום המסחר הבא" if is_non_trading else "מה זה אומר למחר"
+    close_desc = "the last trading day" if is_non_trading else "today"
+    tomorrow_ref = "the next trading session" if is_non_trading else "tomorrow"
+
     if review_type == "daily_prep":
         return f"""You are a senior Wall Street market analyst writing a pre-market briefing in Hebrew.
 
-Your task: Summarize what investors need to know before the US market opens today, based on the tweets/posts below. This is a sharp 3-minute morning read for professional investors.
+Your task: Summarize what investors need to know before the US market opens, based on the tweets/posts below. This is a sharp 3-minute morning read for professional investors.
 
 {SHARED_RULES}
 
@@ -58,14 +74,14 @@ Output JSON format:
 {{"title":"תדריך בוקר – {day_name} {date_str}","date":"{date_str}","sections":[{{"heading":"heading","content":"content"}}]}}
 
 Create exactly 3 sections:
-1. heading: "מה קרה בלילה" — Key overnight developments: futures levels (S&P, Nasdaq, Dow with exact numbers), Asia/Europe session moves, major news that broke after US close. Numbers only, no fluff.
-2. heading: "מה יזיז את השוק היום" — Today's catalysts: economic data releases (with Israel times), earnings reports due, Fed speakers, geopolitical developments. For each — one sentence on why it matters.
-3. heading: "מניות תחת זרקור" — 3-5 specific stocks with a catalyst today: pre-market moves (%), upgrades/downgrades, insider activity, earnings surprise. Format each as: ticker + number + reason."""
+1. heading: "{overnight_heading}" — {overnight_desc}: futures levels (S&P, Nasdaq, Dow with exact numbers), Asia/Europe session moves, major news that broke after US close. Numbers only, no fluff.
+2. heading: "{market_today_heading}" — {today_catalysts}: economic data releases (with Israel times), earnings reports due, Fed speakers, geopolitical developments. For each — one sentence on why it matters.
+3. heading: "מניות תחת זרקור" — 3-5 specific stocks with a catalyst for {today_ref}: pre-market moves (%), upgrades/downgrades, insider activity, earnings surprise. Format each as: ticker + number + reason."""
 
     elif review_type == "daily_summary":
         return f"""You are a senior Wall Street market analyst writing an end-of-day market wrap in Hebrew.
 
-Your task: Summarize the main events of the last trading day on Wall Street, based on the tweets/posts below. Tell investors what happened, why, and what it means for tomorrow.
+Your task: Summarize the main events of {close_desc} on Wall Street, based on the tweets/posts below. Tell investors what happened, why, and what it means for {tomorrow_ref}.
 
 {SHARED_RULES}
 
@@ -75,9 +91,9 @@ Output JSON format:
 {{"title":"סיכום יום מסחר – {day_name} {date_str}","date":"{date_str}","sections":[{{"heading":"heading","content":"content"}}]}}
 
 Create exactly 3 sections:
-1. heading: "כך נסגר היום" — Index performance: S&P 500, Nasdaq, Dow, Russell 2000 with exact % changes and point levels. Trading volume vs average. VIX level and change. One sentence on the dominant theme that drove the session.
-2. heading: "המניות שעשו את הכותרות" — 4-6 stocks that moved significantly today. For each: $TICKER, % change, and WHY it moved (earnings beat/miss, analyst upgrade/downgrade, news catalyst, sector rotation). Do NOT just list names — explain the story.
-3. heading: "מה זה אומר למחר" — The key takeaway from today's session. What shifted in market narrative? What economic data or earnings are due tomorrow? What is the biggest risk or opportunity going into the next session?"""
+1. heading: "{close_heading}" — Index performance: S&P 500, Nasdaq, Dow, Russell 2000 with exact % changes and point levels. Trading volume vs average. VIX level and change. One sentence on the dominant theme that drove the session.
+2. heading: "המניות שעשו את הכותרות" — 4-6 stocks that moved significantly. For each: $TICKER, % change, and WHY it moved (earnings beat/miss, analyst upgrade/downgrade, news catalyst, sector rotation). Do NOT just list names — explain the story.
+3. heading: "{tomorrow_heading}" — The key takeaway from the session. What shifted in market narrative? What economic data or earnings are due for {tomorrow_ref}? What is the biggest risk or opportunity going into the next session?"""
 
     elif review_type == "weekly_prep":
         return f"""You are a senior Wall Street strategist writing a weekly outlook in Hebrew.
