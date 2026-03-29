@@ -96,7 +96,7 @@
             <span class="text-xl">🌅</span>
             <h3 class="font-heading font-bold text-white">הכנה ליום מסחר</h3>
           </div>
-          <div id="timer-dailyPrep" class="countdown-badge text-xs bg-wall-700 text-wall-goldLight px-2 py-1 rounded-lg"></div>
+          <div id="timer-dailyPrep" class="countdown-badge text-xs bg-wall-700 text-wall-goldLight px-2 py-1 rounded-lg" dir="ltr"></div>
         </div>
         <p class="text-sm text-wall-muted mb-3">פיוצ'רס, פרה-מרקט, אירועים צפויים וניתוח טכני – הכל לפני הפתיחה.</p>
         <div id="dailyPrepDate" class="text-xs text-wall-gold">טוען...</div>
@@ -108,7 +108,7 @@
             <span class="text-xl">🌙</span>
             <h3 class="font-heading font-bold text-white">סיכום יום מסחר</h3>
           </div>
-          <div id="timer-dailySummary" class="countdown-badge text-xs bg-wall-700 text-wall-goldLight px-2 py-1 rounded-lg"></div>
+          <div id="timer-dailySummary" class="countdown-badge text-xs bg-wall-700 text-wall-goldLight px-2 py-1 rounded-lg" dir="ltr"></div>
         </div>
         <p class="text-sm text-wall-muted mb-3">מה קרה היום: מדדים, מניות בולטות, סנטימנט ומבט קדימה.</p>
         <div id="dailySummaryDate" class="text-xs text-wall-gold">טוען...</div>
@@ -120,7 +120,7 @@
             <span class="text-xl">📋</span>
             <h3 class="font-heading font-bold text-white">הכנה לשבוע מסחר</h3>
           </div>
-          <div id="timer-weeklyPrep" class="countdown-badge text-xs bg-wall-700 text-wall-goldLight px-2 py-1 rounded-lg"></div>
+          <div id="timer-weeklyPrep" class="countdown-badge text-xs bg-wall-700 text-wall-goldLight px-2 py-1 rounded-lg" dir="ltr"></div>
         </div>
         <p class="text-sm text-wall-muted mb-3">אירועי השבוע, דוחות צפויים, רמות טכניות ומגמות מאקרו.</p>
         <div id="weeklyPrepDate" class="text-xs text-wall-gold">טוען...</div>
@@ -132,7 +132,7 @@
             <span class="text-xl">📊</span>
             <h3 class="font-heading font-bold text-white">סיכום שבועי</h3>
           </div>
-          <div id="timer-weeklySummary" class="countdown-badge text-xs bg-wall-700 text-wall-goldLight px-2 py-1 rounded-lg"></div>
+          <div id="timer-weeklySummary" class="countdown-badge text-xs bg-wall-700 text-wall-goldLight px-2 py-1 rounded-lg" dir="ltr"></div>
         </div>
         <p class="text-sm text-wall-muted mb-3">סיכום ביצועים שבועי, סקטורים מובילים ומבט לשבוע הבא.</p>
         <div id="weeklySummaryDate" class="text-xs text-wall-gold">טוען...</div>
@@ -237,11 +237,11 @@
     // weeklyPrep:     Sunday 13:00
     // weeklySummary:  Saturday 01:00
 
+    const HEB_DAYS = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+
     function getIsraelParts() {
-      // Robust: extract day/hour/min/sec directly via Intl
       const fmt = new Intl.DateTimeFormat('en-US', {
-        timeZone: ISRAEL_TZ,
-        hour12: false,
+        timeZone: ISRAEL_TZ, hour12: false,
         weekday: 'short', year: 'numeric', month: '2-digit', day: '2-digit',
         hour: '2-digit', minute: '2-digit', second: '2-digit'
       });
@@ -256,56 +256,57 @@
       };
     }
 
-    function secsUntilNext(type) {
+    function getNextUpdateInfo(type) {
       const { day, h, m, s } = getIsraelParts();
       const nowSecs = h * 3600 + m * 60 + s;
 
-      // For a given target day (0-6) and time, calc seconds from now
-      function secsTo(targetDay, targetH, targetM) {
+      function calc(targetDay, targetH, targetM) {
         let daysAhead = (targetDay - day + 7) % 7;
         const targetSecs = targetH * 3600 + targetM * 60;
-        if (daysAhead === 0 && targetSecs <= nowSecs) daysAhead = 7; // already passed today
-        return daysAhead * 86400 + (targetSecs - nowSecs);
+        if (daysAhead === 0 && targetSecs <= nowSecs) daysAhead = 7;
+        return {
+          secs: daysAhead * 86400 + (targetSecs - nowSecs),
+          dayName: HEB_DAYS[targetDay],
+          time: `${String(targetH).padStart(2,'0')}:${String(targetM).padStart(2,'0')}`
+        };
       }
 
       if (type === 'dailyPrep') {
-        // Mon(1)-Fri(5) at 14:30 — find nearest
-        let best = Infinity;
+        let best = null;
         for (let d = 1; d <= 5; d++) {
-          best = Math.min(best, secsTo(d, 14, 30));
+          const r = calc(d, 14, 30);
+          if (!best || r.secs < best.secs) best = r;
         }
         return best;
       }
 
       if (type === 'dailySummary') {
-        // Mon(1)-Fri(5) at 23:30
-        let best = Infinity;
+        let best = null;
         for (let d = 1; d <= 5; d++) {
-          best = Math.min(best, secsTo(d, 23, 30));
+          const r = calc(d, 23, 30);
+          if (!best || r.secs < best.secs) best = r;
         }
         return best;
       }
 
-      if (type === 'weeklyPrep') {
-        return secsTo(0, 13, 0); // Sunday 13:00
-      }
-
-      if (type === 'weeklySummary') {
-        return secsTo(6, 1, 0); // Saturday 01:00
-      }
-
+      if (type === 'weeklyPrep') return calc(0, 13, 0);
+      if (type === 'weeklySummary') return calc(6, 1, 0);
       return null;
     }
 
-    function formatCountdown(totalSec) {
-      if (totalSec <= 0) return 'מתעדכן עכשיו...';
-      const d = Math.floor(totalSec / 86400);
-      const h = Math.floor((totalSec % 86400) / 3600);
-      const m = Math.floor((totalSec % 3600) / 60);
-      const s = totalSec % 60;
+    function formatRelative(totalSecs) {
+      if (totalSecs <= 0) return 'עכשיו';
+      const days = Math.floor(totalSecs / 86400);
+      const hours = Math.floor((totalSecs % 86400) / 3600);
+      const mins = Math.floor((totalSecs % 3600) / 60);
 
-      if (d > 0) return `${d}ד׳ ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-      return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+      if (days > 1) return `בעוד ${days} ימים`;
+      if (days === 1 && hours > 0) return `בעוד יום ו-${hours} שעות`;
+      if (days === 1) return 'בעוד יום';
+      if (hours > 1) return `בעוד ${hours} שעות`;
+      if (hours === 1) return `בעוד שעה ו-${mins} דקות`;
+      if (mins > 1) return `בעוד ${mins} דקות`;
+      return 'בעוד דקה';
     }
 
     function updateTimers() {
@@ -313,9 +314,9 @@
       types.forEach(type => {
         const el = document.getElementById('timer-' + type);
         if (!el) return;
-        const secs = secsUntilNext(type);
-        if (secs === null) { el.textContent = ''; return; }
-        el.textContent = '⏱ ' + formatCountdown(secs);
+        const info = getNextUpdateInfo(type);
+        if (!info) { el.textContent = ''; return; }
+        el.textContent = `${info.dayName} ${info.time} · ${formatRelative(info.secs)}`;
       });
     }
 
@@ -355,7 +356,7 @@
     loadData();
     updateClock();
     setInterval(updateClock, 1000);
-    setInterval(updateTimers, 1000);
+    setInterval(updateTimers, 30000);
     setInterval(updateMarketStatus, 30000);
   </script>
 </body>
