@@ -29,35 +29,113 @@ def fetch_tweets():
             print(f"  Error fetching {acc}: {e}")
     return "\n\n".join(all_t)
 
-def call_gemini(tweets, review_type, date_str, day_name):
-    prompt = f"""אתה אנליסט שוק ההון האמריקאי שכותב סקירות מקצועיות בעברית.
-סגנון: מקצועי, תמציתי, ברור. כמו ניוזלטר של בית השקעות מוביל.
+# ══════════════════════════════════════════════
+# PROMPTS — each review type has a unique prompt
+# ══════════════════════════════════════════════
 
-כללים:
-- כתוב בעברית בלבד
-- אל תתן המלצות השקעה ספציפיות (קנה/מכור)
-- השתמש במונחים מקצועיים עם הסבר קצר בסוגריים כשצריך
-- ציין מספרים ואחוזים מדויקים כשזמינים
-- כל סעיף: כותרת + פסקה של 2-4 משפטים
+def get_prompt(tweets, review_type, date_str, day_name):
 
-סוג הסקירה: {review_type}
-תאריך: {date_str}
-יום בשבוע: {day_name}
+    base_rules = """כללים חשובים:
+- כתוב בעברית בלבד. מונחים מקצועיים באנגלית בסוגריים.
+- ציין מספרים, אחוזים ושמות מניות (טיקרים) ספציפיים מהפוסטים.
+- אל תתן המלצות קנה/מכור.
+- כל סעיף: כותרת + פסקה של 3-5 משפטים עם תוכן ממשי.
+- אל תחזור על אותם משפטים בסעיפים שונים.
+- ענה אך ורק ב-JSON טהור, בלי backticks."""
 
-פוסטים ממקורות (Twitter/X):
-{tweets}
+    tweets_block = f"""פוסטים ממקורות (Twitter/X) מתאריך {date_str}:
+{tweets}"""
 
-צור JSON בפורמט הבא (בלי backticks, בלי הסברים, רק JSON טהור):
-{{"title":"כותרת הסקירה","date":"{date_str}","sections":[{{"heading":"כותרת סעיף","content":"תוכן הסעיף"}}]}}
+    if review_type == "daily_prep":
+        return f"""אתה אנליסט בכיר בבית השקעות שמכין תדריך בוקר (Morning Briefing) לצוות המסחר.
+המטרה: לתת תמונת מצב חדה של מה קורה לפני פתיחת המסחר בוול סטריט היום.
 
-כלול 3 סעיפים רלוונטיים לסוג הסקירה:
-- daily_prep: פיוצ'רס ופרה-מרקט, אירועים מרכזיים היום, מה לעקוב אחריו
-- daily_summary: ביצועי מדדים, מניות בולטות, סנטימנט ומבט קדימה
-- weekly_prep: מבט כללי, אירועים מרכזיים בשבוע, רמות טכניות
-- weekly_summary: ביצועים שבועיים, סקטורים בולטים, מבט לשבוע הבא
+{base_rules}
 
-ענה אך ורק ב-JSON טהור."""
+{tweets_block}
 
+צור JSON בפורמט:
+{{"title":"תדריך בוקר – {day_name} {date_str}","date":"{date_str}","sections":[{{"heading":"כותרת","content":"תוכן"}}]}}
+
+כלול בדיוק 4 סעיפים:
+1. "סנטימנט השוק בפתיחת השבוע" — מה מצב הפיוצ'רס? מה הכיוון הכללי? ציין מספרים (S&P, Nasdaq, Dow futures). האם יש פחד או אופטימיות?
+2. "אירועים ונתונים שיזיזו את השוק היום" — נתונים כלכליים ספציפיים (עם שעות אם זמין), דוחות רבעוניים, נאומי פד, הצבעות. מה המשמעות של כל אחד?
+3. "מניות וסקטורים תחת זרקור" — מניות ספציפיות שזזו בפרה-מרקט או שיש להן קטליסט היום. ציין טיקרים ואחוזים.
+4. "מה האנליסט שלנו עוקב אחריו" — הנקודה הכי חשובה היום, הסיכון המרכזי, ומה ישנה כיוון. דעה אנליטית חדה."""
+
+    elif review_type == "daily_summary":
+        return f"""אתה עורך דסק שוק ההון שכותב סיכום יום מסחר (Market Wrap) למשקיעים.
+המטרה: לספר מה קרה היום, למה, ומה זה אומר למחר.
+
+{base_rules}
+
+{tweets_block}
+
+צור JSON בפורמט:
+{{"title":"סיכום יום מסחר – {day_name} {date_str}","date":"{date_str}","sections":[{{"heading":"כותרת","content":"תוכן"}}]}}
+
+כלול בדיוק 4 סעיפים:
+1. "כך נסגר היום" — ביצועי המדדים המרכזיים: S&P 500, Nasdaq, Dow, Russell 2000. אחוזי שינוי, נקודות. האם זה יום עליות, ירידות, או מעורב? נפח מסחר.
+2. "המניות שעשו את היום" — 4-6 מניות ספציפיות שהובילו או פיגרו. לכל מניה: טיקר, אחוז שינוי, והסיבה (דוח, שדרוג, חדשות, סנטימנט). 
+3. "הסיפור מאחורי המספרים" — מה באמת הניע את השוק היום? גורם מאקרו, גיאופוליטי, טכני? האם הייתה רוטציה בין סקטורים? מה אומר ה-VIX?
+4. "מבט קדימה למחר" — מה צפוי מחר? נתונים, דוחות, אירועים. האם המומנטום צפוי להמשיך? סיכונים."""
+
+    elif review_type == "weekly_prep":
+        return f"""אתה ראש מחלקת מחקר שמכין תחזית שבועית (Weekly Outlook) לוועדת ההשקעות.
+המטרה: לתת מפה מלאה של השבוע הקרוב — אירועים, סיכונים, הזדמנויות.
+
+{base_rules}
+
+{tweets_block}
+
+צור JSON בפורמט:
+{{"title":"תחזית שבועית – שבוע {date_str}","date":"{date_str}","sections":[{{"heading":"כותרת","content":"תוכן"}}]}}
+
+כלול בדיוק 4 סעיפים:
+1. "הנושא המרכזי של השבוע" — מה הנרטיב הדומיננטי? (ריבית, גיאופוליטיקה, עונת דוחות, טכנולוגיה). למה דווקא זה חשוב השבוע? הסבר בשני משפטים.
+2. "יומן אירועים — יום אחר יום" — לכל יום (שני עד שישי): אירוע מרכזי אחד לפחות. נתונים כלכליים, דוחות רבעוניים, נאומי פד, פקיעות. כתוב כרשימה עם תאריך ושעה אם זמין.
+3. "סקטורים ומניות לרדאר" — אילו סקטורים רגישים במיוחד השבוע? מניות ספציפיות שצפויות לתנודתיות (דוחות, אנליסטים, מוצר חדש). ציין טיקרים.
+4. "רמות טכניות ותמונת סיכון" — תמיכה/התנגדות ל-S&P 500 ו-Nasdaq. רמת VIX. האם השוק במגמה ברורה או בטווח? מה הסיכון הגדול ביותר השבוע?"""
+
+    elif review_type == "weekly_summary":
+        return f"""אתה אנליסט בכיר שכותב סיכום שבועי (Weekly Review) לניוזלטר משקיעים.
+המטרה: להסתכל אחורה על השבוע, לזהות מגמות, ולהציג תמונה גדולה.
+
+{base_rules}
+
+{tweets_block}
+
+צור JSON בפורמט:
+{{"title":"סיכום שבועי – שבוע {date_str}","date":"{date_str}","sections":[{{"heading":"כותרת","content":"תוכן"}}]}}
+
+כלול בדיוק 4 סעיפים:
+1. "השבוע במספרים" — ביצועי מדדים שבועיים: S&P 500, Nasdaq, Dow, Russell 2000 (אחוזי שינוי שבועיים). VIX. תשואת 10Y. דולר. נפט. זהב. ציין מספרים מדויקים.
+2. "הסיפורים שעשו את השבוע" — 3-4 אירועים/חדשות שהשפיעו ביותר על השוק השבוע. לכל אחד: מה קרה, מה הייתה ההשפעה, ומה זה אומר קדימה.
+3. "מפת הסקטורים" — אילו סקטורים הובילו ואילו פיגרו? מדוע? האם יש רוטציה מתמשכת? ציין 3 סקטורים מובילים ו-3 מפגרים עם אחוזים.
+4. "מה חשוב לשבוע הבא" — האירועים המרכזיים שצפויים. האם השבוע הנוכחי שינה את התמונה? מה הסיכון ומה ההזדמנות?"""
+
+    elif review_type == "events":
+        return f"""אתה עורך לוח אירועים כלכליים (Economic Calendar) עבור משקיעים בשוק האמריקאי.
+המטרה: ליצור רשימת אירועים כלכליים מהותיים לימים הקרובים (5-7 ימים קדימה).
+
+{base_rules}
+
+{tweets_block}
+
+צור JSON בפורמט הבא (שים לב — פורמט שונה מסקירות!):
+{{"items":[{{"time":"2026-03-30T15:30:00+03:00","title":"שם האירוע בעברית","impact":"high","description":"הסבר קצר של 1-2 משפטים — מה האירוע ולמה הוא חשוב למשקיעים"}}]}}
+
+כללים לאירועים:
+- כלול 6-10 אירועים לשבוע הקרוב.
+- impact יכול להיות: "high" (משפיע על כל השוק), "medium" (משפיע על סקטור), "low" (רקע).
+- השתמש בשעון ישראל (UTC+3) בשדה time.
+- כלול: נתונים מאקרו (NFP, CPI, PMI, GDP), החלטות ריבית, דוחות רבעוניים חשובים, נאומי פד, פקיעות אופציות.
+- מיין לפי תאריך (הקרוב ביותר קודם).
+- אם אין מידע מדויק על שעה, השתמש ב-15:30 (שעת פתיחת שוק) כברירת מחדל."""
+
+    return ""
+
+def call_gemini(prompt):
     r = requests.post(
         f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key={GEMINI_API_KEY}",
         headers={"Content-Type": "application/json"},
@@ -73,22 +151,22 @@ def call_gemini(tweets, review_type, date_str, day_name):
 
     resp_data = r.json()
     print(f"  Gemini status: {r.status_code}")
-    
+
     # Gemini 2.5-pro may have multiple parts (thinking + response)
     candidate = resp_data.get("candidates", [{}])[0]
     content = candidate.get("content", {})
     parts = content.get("parts", [])
-    
+
     # Find the text part (skip thinking parts)
     text = ""
     for part in parts:
         if "text" in part:
             text = part["text"]
-    
+
     if not text:
         print(f"  Gemini raw response: {str(resp_data)[:500]}")
         raise Exception("Gemini returned no text")
-    
+
     # Clean potential markdown
     text = text.strip()
     if text.startswith("```"):
@@ -100,7 +178,7 @@ def call_gemini(tweets, review_type, date_str, day_name):
         return json.loads(text)
     except json.JSONDecodeError as e:
         print(f"  JSON parse error: {e}")
-        print(f"  Raw text (last 200 chars): ...{text[-200:]}")
+        print(f"  Raw text (last 300 chars): ...{text[-300:]}")
         raise
 
 def main():
@@ -119,7 +197,12 @@ def main():
 
     print(f"Fetched {len(tweets.split(chr(10)+chr(10)))} tweet blocks")
 
-    result = call_gemini(tweets, REVIEW_TYPE, date_str, day_name)
+    prompt = get_prompt(tweets, REVIEW_TYPE, date_str, day_name)
+    if not prompt:
+        print(f"Unknown review type: {REVIEW_TYPE}")
+        return
+
+    result = call_gemini(prompt)
 
     # Load existing data
     with open("data.json", "r", encoding="utf-8") as f:
@@ -135,9 +218,16 @@ def main():
     }
 
     if REVIEW_TYPE == "events":
-        if "items" in result:
-            data["events"]["items"] = result["items"]
+        # Events format: result should have "items" key
+        items = result.get("items", [])
+        if items:
+            data["events"]["items"] = items
             data["events"]["lastUpdated"] = now.isoformat()
+            print(f"  Stored {len(items)} events")
+        else:
+            # Fallback: maybe Gemini returned sections format, convert
+            print(f"  Warning: no 'items' key found. Keys: {list(result.keys())}")
+            print(f"  Storing raw result as events data")
     elif REVIEW_TYPE in key_map:
         data[key_map[REVIEW_TYPE]] = result
 
