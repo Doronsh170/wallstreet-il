@@ -2,10 +2,10 @@ name: Update Wall Street IL
 
 on:
   schedule:
-    # הכנה יומית: 13:00 UTC = 16:00 Israel (לפני פתיחת השוק)
-    - cron: '0 13 * * 1-5'
-    # סיכום יומי: 21:30 UTC = 00:30 Israel (אחרי סגירת השוק)
-    - cron: '30 21 * * 1-5'
+    # הכנה יומית: 11:30 UTC = 14:30 Israel (שעתיים לפני פתיחת השוק)
+    - cron: '30 11 * * 1-5'
+    # סיכום יומי: 20:30 UTC = 23:30 Israel (30 דקות אחרי סגירת השוק)
+    - cron: '30 20 * * 1-5'
     # הכנה שבועית: יום ראשון 10:00 UTC = 13:00 Israel
     - cron: '0 10 * * 0'
     # סיכום שבועי: יום שישי 22:00 UTC = 01:00 שבת Israel
@@ -26,8 +26,6 @@ on:
 
 jobs:
   update:
-    permissions:
-      contents: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
