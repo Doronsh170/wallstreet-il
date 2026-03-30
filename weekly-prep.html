@@ -7,7 +7,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&family=Rubik:wght@400;500;700&display=swap" rel="stylesheet">
   <script>tailwind.config={theme:{extend:{colors:{wall:{50:'#f7f8fc',100:'#eef0f6',200:'#e2e5ec',300:'#cbd0db',400:'#94a3b8',500:'#64748b',600:'#475569',700:'#334155',800:'#1e293b',900:'#0f172a',gold:'#9a7b2d',goldLight:'#b8942f',goldBg:'#fdf8ed',goldBorder:'#e8d5a0',green:'#16a34a',greenBg:'#ecfdf5',red:'#dc2626',redBg:'#fef2f2',navy:'#1a2332'}},fontFamily:{body:['Heebo','sans-serif'],heading:['Rubik','sans-serif']}}}}</script>
-  <style>body{font-family:'Heebo',sans-serif;background:#f0f2f7}.pulse-dot{animation:pulse 2s ease-in-out infinite}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}.fade-in{animation:fadeIn .6s ease-out}@keyframes fadeIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}.content-area b{color:#1e293b;font-weight:700}.content-area .company-bullet{position:relative;padding-right:20px;margin-bottom:10px}.content-area .company-bullet::before{content:"■";position:absolute;right:0;top:0;color:#9a7b2d;font-size:0.8em}.bottom-line{background:linear-gradient(135deg,#fdf8ed 0%,#f7f8fc 100%);border-right:4px solid #9a7b2d}</style>
+  <style>body{font-family:'Heebo',sans-serif;background:#f0f2f7}.pulse-dot{animation:pulse 2s ease-in-out infinite}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}.fade-in{animation:fadeIn .6s ease-out}@keyframes fadeIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}.content-area ul{list-style:none;padding:0;margin:0}.content-area li{position:relative;padding-right:18px;margin-bottom:8px;line-height:1.7}.content-area li::before{content:"•";position:absolute;right:0;top:0;color:#9a7b2d;font-weight:bold;font-size:1.1em}.bottom-line{background:linear-gradient(135deg,#fdf8ed 0%,#f7f8fc 100%);border-right:4px solid #9a7b2d}</style>
 </head>
 <body class="min-h-screen text-wall-800">
   <div class="bg-wall-navy"><div class="max-w-6xl mx-auto px-4 py-2 flex items-center justify-between text-xs text-gray-300"><div id="marketStatusBar" class="flex items-center gap-2"><span class="pulse-dot w-2 h-2 rounded-full bg-gray-400 inline-block"></span><span>טוען...</span></div><div id="clockBar" class="font-mono"></div></div></div>
@@ -30,23 +30,28 @@
     const ISRAEL_TZ='Asia/Jerusalem';function nowInIsrael(){return new Date(new Date().toLocaleString('en-US',{timeZone:ISRAEL_TZ}));}function updateClock(){const n=nowInIsrael();document.getElementById('clockBar').textContent=`${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}:${String(n.getSeconds()).padStart(2,'0')} IL`;}function getMarketStatus(holidays){const now=nowInIsrael(),day=now.getDay(),t=now.getHours()*60+now.getMinutes(),ds=now.toISOString().split('T')[0];if(day===6||day===0||(holidays||[]).includes(ds))return'closed';if(t>=16*60+30&&t<23*60)return'open';if(t>=23*60)return'afterhours';return'premarket';}function updateStatusBar(holidays){const st=getMarketStatus(holidays);const map={closed:{c:'bg-wall-red',t:'השוק סגור'},open:{c:'bg-wall-green',t:'השוק פתוח'},afterhours:{c:'bg-wall-gold',t:'After Hours'},premarket:{c:'bg-wall-gold',t:'פרה-מרקט'}};const s=map[st]||map.premarket;document.getElementById('marketStatusBar').innerHTML=`<span class="pulse-dot w-2 h-2 rounded-full ${s.c} inline-block"></span><span>${s.t}</span>`;}
     async function init(){try{const resp=await fetch('data.json?_='+Date.now());const data=await resp.json();updateStatusBar(data.marketStatus?.usHolidays2026||[]);const section=data.weeklyPrep;if(!section){document.getElementById('contentArea').innerHTML='<p class="text-wall-400">אין נתונים זמינים.</p>';return;}document.getElementById('pageDate').textContent=section.title;
 
-        function formatWeeklyContent(text) {
+        function formatContent(text) {
           const lines = text.split('\n').filter(l => l.trim());
-          let html = '';
+          const bullets = [];
+          const nonBullets = [];
           lines.forEach(l => {
             const trimmed = l.trim();
-            if (trimmed.startsWith('■ ')) {
-              html += '<div class="company-bullet">' + trimmed.slice(2) + '</div>';
+            if (trimmed.startsWith('* ') || trimmed.startsWith('- ')) {
+              bullets.push(trimmed.slice(2));
             } else {
-              html += '<p class="text-wall-700 leading-relaxed mb-3">' + trimmed + '</p>';
+              nonBullets.push(trimmed);
             }
           });
-          return html || '<p class="text-wall-700 leading-relaxed">' + text + '</p>';
+          let html = '';
+          if (nonBullets.length) html += '<p class="text-wall-700 leading-relaxed mb-2">' + nonBullets.join('<br>') + '</p>';
+          if (bullets.length) html += '<ul>' + bullets.map(b => '<li>' + b + '</li>').join('') + '</ul>';
+          if (!html) html = '<p class="text-wall-700 leading-relaxed">' + text + '</p>';
+          return html;
         }
 
         document.getElementById('contentArea').innerHTML=section.sections.map(s=>{
-          const isBottomLine = s.heading === 'בשורה התחתונה';
-          return '<div class="' + (isBottomLine ? 'bottom-line' : 'bg-white') + ' border border-wall-200 rounded-xl p-5 shadow-sm content-area"><h2 class="font-heading font-bold ' + (isBottomLine ? 'text-wall-900' : 'text-wall-gold') + ' mb-3">' + (isBottomLine ? '📌 ' : '') + s.heading + '</h2>' + formatWeeklyContent(s.content) + '</div>';
+          const isBottomLine = s.heading === 'שורה תחתונה';
+          return '<div class="' + (isBottomLine ? 'bottom-line' : 'bg-white') + ' border border-wall-200 rounded-xl p-5 shadow-sm content-area"><h2 class="font-heading font-bold ' + (isBottomLine ? 'text-wall-900' : 'text-wall-gold') + ' mb-3">' + (isBottomLine ? '📌 ' : '') + s.heading + '</h2>' + formatContent(s.content) + '</div>';
         }).join('');}catch(e){console.error(e);}}
     init();updateClock();setInterval(updateClock,1000);
   </script>
