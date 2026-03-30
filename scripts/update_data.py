@@ -1,7 +1,8 @@
 import json, os, requests
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 
-ISR_TZ = timezone(timedelta(hours=3))
+ISR_TZ = ZoneInfo("Asia/Jerusalem")
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 TWITTER_API_KEY = os.environ["TWITTER_API_KEY"]
 REVIEW_TYPE = os.environ.get("REVIEW_TYPE", "daily_prep")
@@ -343,7 +344,7 @@ def main():
 
     elif REVIEW_TYPE in ("weekly_prep", "weekly_summary"):
         if REVIEW_TYPE == "weekly_summary":
-            week_range = get_prev_week_range_str(now)
+            week_range = get_week_range_str(now)
         else:
             week_range = get_week_range_str(now)
 
