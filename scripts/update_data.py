@@ -224,6 +224,7 @@ def call_gemini(prompt):
         headers={"Content-Type": "application/json"},
         json={
             "contents": [{"parts": [{"text": prompt}]}],
+            "tools": [{"google_search": {}}],
             "generationConfig": {
                 "temperature": 0.7,
                 "maxOutputTokens": 8192,
