@@ -15,6 +15,11 @@
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
     .fade-in { animation:fadeIn .6s ease-out; }
     @keyframes fadeIn { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+    .content-area ul { list-style: none; padding: 0; margin: 0; }
+    .content-area li { position: relative; padding-right: 18px; margin-bottom: 8px; line-height: 1.7; }
+    .content-area li::before { content: "•"; position: absolute; right: 0; top: 0; color: #9a7b2d; font-weight: bold; font-size: 1.1em; }
+    .content-area b { color: #1e293b; font-weight: 700; }
+    .bottom-line { background: linear-gradient(135deg, #fdf8ed 0%, #f7f8fc 100%); border-right: 4px solid #9a7b2d; }
   </style>
 </head>
 <body class="min-h-screen text-wall-800">
@@ -100,7 +105,30 @@
         const st=getMarketStatus(holidays);
         if(st==='closed'){const now=nowInIsrael();if(now.getDay()===6||now.getDay()===0)document.getElementById('noTradeWarning').classList.remove('hidden');}
         if(st==='open')document.getElementById('timeWarning').classList.remove('hidden');
-        document.getElementById('contentArea').innerHTML=section.sections.map(s=>`<div class="bg-white border border-wall-200 rounded-xl p-5 shadow-sm"><h2 class="font-heading font-bold text-wall-gold mb-3">${s.heading}</h2><p class="text-wall-700 leading-relaxed">${s.content}</p></div>`).join('');
+
+        function formatContent(text) {
+          const lines = text.split('\n').filter(l => l.trim());
+          const bullets = [];
+          const nonBullets = [];
+          lines.forEach(l => {
+            const trimmed = l.trim();
+            if (trimmed.startsWith('* ') || trimmed.startsWith('- ')) {
+              bullets.push(trimmed.slice(2));
+            } else {
+              nonBullets.push(trimmed);
+            }
+          });
+          let html = '';
+          if (nonBullets.length) html += `<p class="text-wall-700 leading-relaxed mb-2">${nonBullets.join('<br>')}</p>`;
+          if (bullets.length) html += `<ul>${bullets.map(b => `<li>${b}</li>`).join('')}</ul>`;
+          if (!html) html = `<p class="text-wall-700 leading-relaxed">${text}</p>`;
+          return html;
+        }
+
+        document.getElementById('contentArea').innerHTML=section.sections.map(s=>{
+          const isBottomLine = s.heading === 'שורה תחתונה';
+          return `<div class="${isBottomLine ? 'bottom-line' : 'bg-white'} border border-wall-200 rounded-xl p-5 shadow-sm content-area"><h2 class="font-heading font-bold ${isBottomLine ? 'text-wall-900' : 'text-wall-gold'} mb-3">${isBottomLine ? '📌 ' : ''}${s.heading}</h2>${formatContent(s.content)}</div>`;
+        }).join('');
       }catch(e){console.error(e);}
     }
     init();updateClock();setInterval(updateClock,1000);
