@@ -31,6 +31,7 @@
     async function init(){try{const resp=await fetch('data.json?_='+Date.now());const data=await resp.json();updateStatusBar(data.marketStatus?.usHolidays2026||[]);const section=data.weeklyPrep;if(!section){document.getElementById('contentArea').innerHTML='<p class="text-wall-400">אין נתונים זמינים.</p>';return;}document.getElementById('pageDate').textContent=section.title;
 
         function formatContent(text) {
+          if (Array.isArray(text)) text = text.join('\n');
           const lines = text.split('\n').filter(l => l.trim());
           const bullets = [];
           const nonBullets = [];
