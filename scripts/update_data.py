@@ -263,49 +263,96 @@ Event types to include: macro data (NFP, CPI, PPI, PMI, GDP, jobless claims), Fe
 # GEMINI CALL
 # ══════════════════════════════════════════════════════════════
 
-def call_gemini(prompt):
-    r = requests.post(
-        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}",
-        headers={"Content-Type": "application/json"},
-        json={
-            "contents": [{"parts": [{"text": prompt}]}],
-            "tools": [{"google_search": {}}],
-            "generationConfig": {
-                "temperature": 0.7,
-                "maxOutputTokens": 8192
-            }
-        }
-    )
-
-    resp_data = r.json()
-    print(f"  Gemini status: {r.status_code}")
-
-    candidate = resp_data.get("candidates", [{}])[0]
-    content = candidate.get("content", {})
-    parts = content.get("parts", [])
-
-    text = ""
-    for part in parts:
-        if "text" in part:
-            text = part["text"]
-
-    if not text:
-        print(f"  Gemini raw response: {str(resp_data)[:500]}")
-        raise Exception("Gemini returned no text")
-
+def extract_json(text):
+    """Extract and parse JSON from Gemini response, handling common issues."""
     text = text.strip()
+    # Remove backticks
     if text.startswith("```"):
         text = text.split("\n", 1)[1] if "\n" in text else text[3:]
     if text.endswith("```"):
         text = text[:-3]
     text = text.strip()
 
+    # Try direct parse first
     try:
         return json.loads(text)
-    except json.JSONDecodeError as e:
-        print(f"  JSON parse error: {e}")
-        print(f"  Raw text (last 300 chars): ...{text[-300:]}")
-        raise
+    except json.JSONDecodeError:
+        pass
+
+    # Extract JSON object between first { and last }
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        candidate = text[start:end+1]
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            pass
+        # Fix trailing commas before } or ]
+        import re
+        cleaned = re.sub(r',\s*([}\]])', r'\1', candidate)
+        try:
+            return json.loads(cleaned)
+        except json.JSONDecodeError as e:
+            print(f"  JSON parse error after cleanup: {e}")
+            print(f"  Raw text (last 300 chars): ...{text[-300:]}")
+            raise
+
+    raise Exception(f"No JSON object found in response. Text starts with: {text[:200]}")
+
+
+def call_gemini(prompt, max_retries=3):
+    for attempt in range(max_retries):
+        r = requests.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}",
+            headers={"Content-Type": "application/json"},
+            json={
+                "contents": [{"parts": [{"text": prompt}]}],
+                "tools": [{"google_search": {}}],
+                "generationConfig": {
+                    "temperature": 0.7,
+                    "maxOutputTokens": 8192
+                }
+            }
+        )
+
+        resp_data = r.json()
+        print(f"  Gemini status: {r.status_code} (attempt {attempt+1}/{max_retries})")
+
+        # Retry on 503 (overloaded)
+        if r.status_code == 503:
+            if attempt < max_retries - 1:
+                import time
+                print(f"  Gemini overloaded, waiting 30s...")
+                time.sleep(30)
+                continue
+            else:
+                raise Exception("Gemini unavailable after all retries")
+
+        candidate = resp_data.get("candidates", [{}])[0]
+        content = candidate.get("content", {})
+        parts = content.get("parts", [])
+
+        text = ""
+        for part in parts:
+            if "text" in part:
+                text = part["text"]
+
+        if not text:
+            print(f"  Gemini raw response: {str(resp_data)[:500]}")
+            raise Exception("Gemini returned no text")
+
+        try:
+            return extract_json(text)
+        except (json.JSONDecodeError, Exception) as e:
+            if attempt < max_retries - 1:
+                import time
+                print(f"  JSON error, retrying in 10s...")
+                time.sleep(10)
+                continue
+            raise
+
+    raise Exception("All retries failed")
 
 # ══════════════════════════════════════════════════════════════
 # MAIN
