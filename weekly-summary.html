@@ -19,6 +19,9 @@
       <p id="pageDate" class="text-sm text-wall-500 mt-1">טוען...</p>
     </div>
     <div id="contentArea" class="space-y-4"></div>
+    <div id="updateNotice" class="hidden bg-wall-100 border border-wall-200 rounded-xl p-3 mt-4 text-center">
+      <p class="text-wall-500 text-sm">📅 הסיכום הבא יתעדכן במוצ״ש הקרוב בשעה 01:00</p>
+    </div>
     <div class="mt-8 text-xs text-wall-400 border-t border-wall-200 pt-4">
       <p>מקורות: @AIStockSavvy, @wallstengine, @DeIaone, @StockMKTNewz, @zerohedge, @financialjuice</p>
       <p class="mt-1">אין באמור ייעוץ השקעות או המלצה לפעולה בניירות ערך.</p>
@@ -52,7 +55,7 @@
         document.getElementById('contentArea').innerHTML=section.sections.map(s=>{
           const isBottomLine = s.heading === 'שורה תחתונה';
           return '<div class="' + (isBottomLine ? 'bottom-line' : 'bg-white') + ' border border-wall-200 rounded-xl p-5 shadow-sm content-area"><h2 class="font-heading font-bold ' + (isBottomLine ? 'text-wall-900' : 'text-wall-gold') + ' mb-3">' + (isBottomLine ? '📌 ' : '') + s.heading + '</h2>' + formatContent(s.content) + '</div>';
-        }).join('');}catch(e){console.error(e);}}
+        }).join('');document.getElementById('updateNotice').classList.remove('hidden');}catch(e){console.error(e);}}
     init();updateClock();setInterval(updateClock,1000);
   </script>
 </body>
