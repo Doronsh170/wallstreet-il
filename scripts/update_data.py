@@ -145,152 +145,97 @@ def get_prompt(tweets, review_type, date_str, day_name, title_date_str=None, tit
     if review_type == "daily_prep":
         return f"""You are a senior Wall Street market analyst writing a pre-market briefing in Hebrew.
 
-Your task: Create a structured, bullet-point briefing of key points investors need before the US market opens, based on the tweets/posts below. Format it like a professional investor newsletter with clear topic sections and bullet points.
+Your task: Summarize in bullet points everything investors need to know before today's US market open, based on the tweets/posts below. Write a flat list of the most important facts — no topic groupings, no sub-sections, just one sharp bullet after another.
 
 {SHARED_RULES}
 
 CRITICAL — OUTPUT FORMAT:
-- Each section "content" field MUST use bullet points. Every bullet starts with "* " (asterisk + space).
-- Each bullet should be a single concise point with a bold label followed by a colon, then the detail.
-- Format bold labels like this: <b>Label</b>: detail text.
-- Keep bullets sharp — one key fact per bullet with specific numbers.
-- Do NOT write long paragraphs. Use ONLY bullet points in the content.
+- Output exactly 2 JSON sections: one with all the bullets, one with the bottom line.
+- The first section's "content" field MUST be a flat list of bullet points. Every bullet starts with "* " (asterisk + space).
+- Each bullet: "* Sub-heading: one concise fact." The sub-heading is a short topic label (2-4 words), plain text, no formatting tags.
+- Do NOT use <b> tags or any HTML formatting. Plain text only.
+- Include 7-12 bullets covering the most important topics: geopolitics, macro data, index/futures moves, notable stocks, commodities, Fed/rates, sentiment — whatever is in the tweets.
+- Do NOT group bullets under sub-headings. Do NOT use 📍 or any section dividers. Just a flat list.
+- Order bullets from most market-moving to least important.
+- The second section is "שורה תחתונה" — a single concise paragraph (NOT bullets), 2-3 sentences summarizing the dominant theme and main risk.
 
 {tweets_block}
 
 Output JSON format:
-{{"title":"נקודות חשובות לקראת פתיחת המסחר בוול סטריט 🇺🇸 – יום {title_day_name} {title_date_str}","date":"{title_date_str}","sections":[{{"heading":"heading","content":"content"}}]}}
-
-Create 5-7 sections based on the topics available in the tweets. Structure:
-
-FIRST SECTION:
-- heading: "📍 {overnight_heading}" — 2-3 bullets summarizing the main overnight/weekend developments: futures, Asia/Europe moves, major breaking news. Each bullet = one fact with a number.
-
-MIDDLE SECTIONS (3-5 sections, pick the most relevant topics from the tweets):
-Choose from topics like these (use 📍 emoji before each heading):
-- "📍 גיאופוליטיקה וסחר עולמי" — geopolitical risks, trade war updates, sanctions, military developments
-- "📍 אינפלציה ומדיניות מוניטרית" — inflation data, Fed policy, interest rate expectations, central bank actions
-- "📍 אמון צרכנים ומאקרו" — consumer sentiment, GDP, employment data, economic indicators
-- "📍 מניות וסקטורים בולטים" — notable stock moves, sector rotation, earnings, upgrades/downgrades
-- "📍 סחורות ושווקים גלובליים" — oil, gold, commodities, currency moves, global markets
-- "📍 שוק העבודה" — jobs data, unemployment, labor market trends
-- "📍 טכנולוגיה ובינה מלאכותית" — tech sector news, AI developments, mega-cap moves
-- "📍 אג\"ח וסיכוני אשראי" — bond yields, credit spreads, CDS, Treasury moves
-Pick ONLY topics that have real data in the tweets. Do NOT create empty sections. Each section: 2-4 bullets.
-
-LAST SECTION:
-- heading: "שורה תחתונה" — A single concise paragraph (NOT bullets) summarizing the key takeaway: what is the dominant theme, what should investors focus on, and what is the main risk. 2-3 sentences max."""
+{{"title":"נקודות חשובות לקראת פתיחת המסחר בוול סטריט 🇺🇸 – יום {title_day_name} {title_date_str}","date":"{title_date_str}","sections":[{{"heading":"נקודות מרכזיות","content":"* sub-heading: fact\\n* sub-heading: fact..."}},{{"heading":"שורה תחתונה","content":"paragraph"}}]}}"""
 
     elif review_type == "daily_summary":
         return f"""You are a senior Wall Street market analyst writing an end-of-day market wrap in Hebrew.
 
-Your task: Create a structured, bullet-point summary of {close_desc}'s trading session on Wall Street, based on the tweets/posts below. Format it like a professional investor newsletter with clear topic sections and bullet points.
+Your task: Summarize in bullet points everything that happened in today's trading session on Wall Street, based on the tweets/posts below. Write a flat list of the most important facts — no topic groupings, no sub-sections, just one sharp bullet after another.
 
 {SHARED_RULES}
 
 CRITICAL — OUTPUT FORMAT:
-- Each section "content" field MUST use bullet points. Every bullet starts with "* " (asterisk + space).
-- Each bullet should be a single concise point with a bold label followed by a colon, then the detail.
-- Format bold labels like this: <b>Label</b>: detail text.
-- Keep bullets sharp — one key fact per bullet with specific numbers.
-- Do NOT write long paragraphs. Use ONLY bullet points in the content.
+- Output exactly 2 JSON sections: one with all the bullets, one with the bottom line.
+- The first section's "content" field MUST be a flat list of bullet points. Every bullet starts with "* " (asterisk + space).
+- Each bullet: "* Sub-heading: one concise fact." The sub-heading is a short topic label (2-4 words), plain text, no formatting tags.
+- Do NOT use <b> tags or any HTML formatting. Plain text only.
+- Include 7-12 bullets covering: index performance (S&P 500, Nasdaq, Dow with %), notable stock moves ($TICKER +/- %), VIX, commodities, geopolitical impact, macro data, sector moves, institutional activity — whatever is in the tweets.
+- Do NOT group bullets under sub-headings. Do NOT use 📍 or any section dividers. Just a flat list.
+- Start with index performance bullets, then order by market impact.
+- The second section is "שורה תחתונה" — a single concise paragraph (NOT bullets), 2-3 sentences summarizing the key takeaway and what to watch for tomorrow.
 
 {tweets_block}
 
 Output JSON format:
-{{"title":"סיכום יום המסחר בוול סטריט 🇺🇸 – יום {title_day_name} {title_date_str}","date":"{title_date_str}","sections":[{{"heading":"heading","content":"content"}}]}}
-
-Create 5-7 sections based on the topics available in the tweets. Structure:
-
-FIRST SECTION:
-- heading: "📍 {close_heading}" — 3-4 bullets: S&P 500, Nasdaq, Dow, Russell 2000 with exact % changes. VIX level. Trading volume note. One bullet on the dominant theme.
-
-MIDDLE SECTIONS (3-5 sections, pick the most relevant topics from the tweets):
-Choose from topics like these (use 📍 emoji before each heading):
-- "📍 המניות שעשו את הכותרות" — 3-5 specific stocks: $TICKER, % move, and WHY (earnings, upgrade, news). One bullet per stock.
-- "📍 גיאופוליטיקה והשפעה על השוק" — geopolitical developments that moved markets today
-- "📍 אינפלציה ומדיניות מוניטרית" — inflation data, Fed comments, rate expectations
-- "📍 סחורות ומט\"ח" — oil, gold, dollar, bond yields with exact numbers
-- "📍 סקטורים בולטים" — which sectors led, which lagged, rotation signals
-- "📍 סנטימנט ותנודתיות" — VIX, put/call ratio, fund flows, institutional moves
-- "📍 נתוני מאקרו" — economic data released today and market reaction
-- "📍 טכנולוגיה ובינה מלאכותית" — tech sector and AI-related moves
-Pick ONLY topics that have real data in the tweets. Do NOT create empty sections. Each section: 2-4 bullets.
-
-LAST SECTION:
-- heading: "שורה תחתונה" — A single concise paragraph (NOT bullets) summarizing: what was the key takeaway from the session, what shifted in the market narrative, and what is the main thing to watch for {tomorrow_ref}. 2-3 sentences max."""
+{{"title":"סיכום יום המסחר בוול סטריט 🇺🇸 – יום {title_day_name} {title_date_str}","date":"{title_date_str}","sections":[{{"heading":"סיכום המסחר","content":"* sub-heading: fact\\n* sub-heading: fact..."}},{{"heading":"שורה תחתונה","content":"paragraph"}}]}}"""
 
     elif review_type == "weekly_prep":
-        return f"""You are a senior Wall Street strategist writing a comprehensive weekly outlook newsletter in Hebrew.
+        return f"""You are a senior Wall Street strategist writing a weekly outlook for Israeli investors in Hebrew.
 
-Your task: Based on the tweets/posts below, create a professional weekly preview that reads like a premium investor newsletter. Write in FUTURE TENSE — this is about what's COMING this week. The tone should be analytical, data-driven, and narrative (not bullet points). Use full paragraphs with specific numbers.
+Your task: Summarize in bullet points what investors need to know ahead of the coming trading week on Wall Street, based on the tweets/posts below. Write a flat list — each bullet has a short sub-heading followed by a colon, then the detail. Write in FUTURE TENSE.
 
 {SHARED_RULES}
 
 CRITICAL — OUTPUT FORMAT:
-- Write in flowing Hebrew paragraphs, NOT bullet points.
-- For earnings/company mentions, use "■ " (■ + space) at the start of each company paragraph.
-- Use <b>bold</b> tags for key terms, company names, and important numbers.
-- Each section should be 2-4 paragraphs of substantive analysis.
-- Write in FUTURE TENSE (צפוי, ידווחו, יתפרסם, יתמקדו).
+- Output exactly 2 JSON sections: one with all the bullets, one with the bottom line.
+- The first section's "content" field MUST be a flat list of bullet points. Every bullet starts with "* " (asterisk + space).
+- Each bullet format: "* Sub-heading: detail text." — the sub-heading is a short topic label (2-4 words), NOT bold, NOT wrapped in tags.
+- Do NOT use <b> tags, ■ markers, 📍 emojis, or any special formatting. Plain text only.
+- Include 8-14 bullets, in this order:
+  1. START with 1-2 bullets summarizing how last week ended (index performance with %, dominant theme) — this gives context.
+  2. Then the key events coming THIS week: Fed decisions, economic data (NFP, CPI, PMI, GDP), earnings reports, trade/tariff deadlines, geopolitical developments.
+  3. For each event: include the specific day and Israel time when known (e.g. "יום רביעי 21:00 שעון ישראל").
+  4. End with notable companies expected to report earnings this week.
+- Do NOT repeat information across bullets. Each bullet = one unique fact.
+- The second section is "שורה תחתונה" — a single concise paragraph (NOT bullets), 2-3 sentences on the ONE thing to focus on this week and what would be bullish vs bearish.
 
 {tweets_block}
 
 Output JSON format:
-{{"title":"הכנה לשבוע מסחר בוול סטריט 🇺🇸 – {week_range if week_range else date_str}","date":"{date_str}","sections":[{{"heading":"heading","content":"content"}}]}}
-
-Create exactly 5 sections:
-
-1. heading: "פתיח לשבוע"
-Context paragraph: How did last week end? What are the key index levels (S&P 500, Nasdaq, Dow with % changes)? What is the dominant sentiment going into this week? What is the ONE big question the market is trying to answer? Write 1-2 paragraphs with specific numbers.
-
-2. heading: "מה צפוי בשבוע הקרוב"
-The key macro events and catalysts for this week. Include: Fed decisions/speakers, economic data releases (GDP, NFP, CPI, PMI, jobless claims — with expected dates), trade/tariff deadlines, geopolitical milestones. For each — explain WHY it matters and what the market expects. Write 2-3 detailed paragraphs.
-
-3. heading: "אירועים חשובים שישפיעו על השוק"
-Non-macro events that could move markets: geopolitical developments, regulatory decisions, trade negotiations, sector-specific catalysts, technical levels. Be specific about what could surprise. Write 1-2 paragraphs.
-
-4. heading: "חברות חשובות שצפויות לדווח"
-Major earnings reports expected this week. Format each company as a separate paragraph starting with "■ ". For each: company name ($TICKER), expected report date, key metrics to watch, and why the report matters. Include 4-6 companies, prioritizing mega-caps and market-moving names.
-
-5. heading: "בשורה התחתונה"
-A concise closing paragraph: What is the ONE thing investors should focus on this week? What scenario would be bullish vs bearish? 2-3 sentences max."""
+{{"title":"הכנה לשבוע מסחר בוול סטריט 🇺🇸 – {week_range if week_range else date_str}","date":"{date_str}","sections":[{{"heading":"נקודות מרכזיות לשבוע הקרוב","content":"* sub-heading: fact\\n* sub-heading: fact..."}},{{"heading":"שורה תחתונה","content":"paragraph"}}]}}"""
 
     elif review_type == "weekly_summary":
-        return f"""You are a senior Wall Street strategist writing a comprehensive weekly review newsletter in Hebrew.
+        return f"""You are a senior Wall Street strategist writing a weekly review for Israeli investors in Hebrew.
 
-Your task: Based on the tweets/posts below, create a professional weekly summary that reads like a premium investor newsletter. Write in PAST TENSE — this is about what HAPPENED this week. The tone should be analytical, data-driven, and narrative (not bullet points). Use full paragraphs with specific numbers.
+Your task: Summarize in bullet points the key events from this week's trading on Wall Street, based on the tweets/posts below. Write a flat list — each bullet has a short sub-heading followed by a colon, then the detail. Write in PAST TENSE.
 
 {SHARED_RULES}
 
 CRITICAL — OUTPUT FORMAT:
-- Write in flowing Hebrew paragraphs, NOT bullet points.
-- For earnings/company mentions, use "■ " (■ + space) at the start of each company paragraph.
-- Use <b>bold</b> tags for key terms, company names, and important numbers.
-- Each section should be 2-4 paragraphs of substantive analysis.
-- Write in PAST TENSE (רשם, עלה, ירד, דיווחה, פורסם).
+- Output exactly 2 JSON sections: one with all the bullets, one with the bottom line.
+- The first section's "content" field MUST be a flat list of bullet points. Every bullet starts with "* " (asterisk + space).
+- Each bullet format: "* Sub-heading: detail text." — the sub-heading is a short topic label (2-4 words), NOT bold, NOT wrapped in tags.
+- Do NOT use <b> tags, ■ markers, 📍 emojis, or any special formatting. Plain text only.
+- Include 8-14 bullets, in this order:
+  1. START with index performance: S&P 500, Nasdaq, Dow — weekly % changes, notable milestones (highs, correction territory).
+  2. Then macro data published this week: employment, inflation, PMI, GDP, consumer sentiment — actual numbers and market reaction.
+  3. Then key events that moved markets: geopolitics, Fed comments, trade/tariff news, commodity moves (oil, gold with numbers).
+  4. Then notable earnings reports: company ($TICKER), stock move %, key result.
+  5. End with sector rotation or institutional activity if relevant.
+- Do NOT repeat information across bullets. Each bullet = one unique fact.
+- The second section is "שורה תחתונה" — a single concise paragraph (NOT bullets), 2-3 sentences on the key takeaway from the week and what to watch next week.
 
 {tweets_block}
 
 Output JSON format:
-{{"title":"סיכום שבוע המסחר בוול סטריט 🇺🇸 – {week_range if week_range else date_str}","date":"{date_str}","sections":[{{"heading":"heading","content":"content"}}]}}
-
-Create exactly 5 sections:
-
-1. heading: "פתיח שבועי"
-Opening summary: How did the major indices perform this week? S&P 500, Nasdaq, Dow — each with weekly % change and notable milestones (new highs, correction territory, streaks). What was the dominant narrative/theme of the week? What drove sentiment? Write 1-2 paragraphs with specific numbers.
-
-2. heading: "אירועי המאקרו שפורסמו השבוע"
-The key economic data releases this week and their significance. Include: employment data, inflation readings, PMI, GDP, consumer sentiment, housing — whichever were published. For each: the actual number, what was expected, and how the market reacted. Write 2-3 detailed paragraphs.
-
-3. heading: "אירועים חשובים שהשפיעו על השוק"
-Non-macro events that moved markets: geopolitical developments, Fed speaker comments, trade/tariff news, regulatory actions, sector-specific catalysts, commodity moves (oil, gold). Be specific about cause and effect. Write 1-2 paragraphs.
-
-4. heading: "דוחות רבעוניים בולטים"
-The most notable earnings reports this week. Format each company as a separate paragraph starting with "■ ". For each: company name ($TICKER), stock move (%), key results (revenue, EPS vs estimates), and the story behind the move. Include 4-6 companies, prioritizing the biggest movers and market-relevant names.
-
-5. heading: "בשורה התחתונה"
-A concise closing paragraph: What is the key takeaway from this week? How did the market narrative shift? What are the main risks and opportunities heading into next week? 2-3 sentences max."""
+{{"title":"סיכום שבוע המסחר בוול סטריט 🇺🇸 – {week_range if week_range else date_str}","date":"{date_str}","sections":[{{"heading":"סיכום השבוע","content":"* sub-heading: fact\\n* sub-heading: fact..."}},{{"heading":"שורה תחתונה","content":"paragraph"}}]}}"""
 
     elif review_type == "events":
         return f"""You are a financial calendar editor creating an economic events calendar in Hebrew.
