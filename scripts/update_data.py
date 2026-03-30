@@ -51,13 +51,16 @@ def get_last_trading_day(now, holidays):
     return now - timedelta(days=1)
 
 def get_prev_week_range_str(now):
-    """Get the Mon-Fri date range for the PREVIOUS completed trading week."""
+    """Get the Mon-Fri date range for the most recently COMPLETED trading week.
+    Sat/Sun: the week that just ended (this week's Mon-Fri).
+    Mon-Fri: previous week's Mon-Fri."""
     weekday = now.weekday()  # 0=Mon
-    # Go to last week's Monday
-    days_to_last_monday = weekday + 7
-    last_monday = now - timedelta(days=days_to_last_monday)
-    last_friday = last_monday + timedelta(days=4)
-    return f"{last_monday.strftime('%d/%m')}–{last_friday.strftime('%d/%m/%Y')}"
+    if weekday >= 5:  # Sat/Sun: the week that just ended
+        monday = now - timedelta(days=weekday)
+    else:  # Mon-Fri: previous week
+        monday = now - timedelta(days=weekday + 7)
+    friday = monday + timedelta(days=4)
+    return f"{monday.strftime('%d/%m')}–{friday.strftime('%d/%m/%Y')}"
 
 def get_week_range_str(now):
     """Get the Mon-Fri date range for the current/most recent trading week.
@@ -172,7 +175,13 @@ Output JSON format:
     elif review_type == "weekly_prep":
         return f"""You are a senior Wall Street strategist writing a weekly outlook for Israeli investors in Hebrew.
 
-Your task: Summarize in bullet points what investors need to know ahead of the coming trading week on Wall Street, based on the tweets/posts below. Write a flat list — each bullet has a short sub-heading followed by a colon, then the detail. Write in FUTURE TENSE.
+Your task: Summarize in bullet points what investors need to know ahead of the trading week of {week_range if week_range else date_str} on Wall Street, based on the tweets/posts below. Write a flat list — each bullet has a short sub-heading followed by a colon, then the detail. Write in FUTURE TENSE.
+
+CRITICAL — TIME FRAME:
+- This preview covers the trading week {week_range if week_range else date_str} ONLY.
+- Include ONLY events, data releases, and catalysts scheduled for THIS specific week.
+- Do NOT include events from previous weeks or events beyond this week's Friday.
+- When referencing "last week" for context, refer to the trading week BEFORE {week_range if week_range else date_str}.
 
 {SHARED_RULES}
 
@@ -197,7 +206,13 @@ Output JSON format:
     elif review_type == "weekly_summary":
         return f"""You are a senior Wall Street strategist writing a weekly review for Israeli investors in Hebrew.
 
-Your task: Summarize in bullet points the key events from this week's trading on Wall Street, based on the tweets/posts below. Write a flat list — each bullet has a short sub-heading followed by a colon, then the detail. Write in PAST TENSE.
+Your task: Summarize in bullet points the key events from the trading week of {week_range if week_range else date_str} on Wall Street, based on the tweets/posts below. Write a flat list — each bullet has a short sub-heading followed by a colon, then the detail. Write in PAST TENSE.
+
+CRITICAL — TIME FRAME:
+- This summary covers the trading week {week_range if week_range else date_str} ONLY.
+- Include ONLY events, data, and market moves that occurred during THIS specific week.
+- Do NOT include events from the current or upcoming week.
+- If the tweets contain information from outside this date range, IGNORE it.
 
 {SHARED_RULES}
 
@@ -347,18 +362,14 @@ def main():
         if REVIEW_TYPE == "weekly_summary":
             week_range = get_prev_week_range_str(now)
         else:
-            week_range = get_week_range_str(now)
-
-    if REVIEW_TYPE == "weekly_prep":
-        # For weekly prep, compute next week's range
-        # Find next Monday
-        days_ahead = (0 - now.weekday()) % 7  # 0=Monday
-        if days_ahead == 0 and now.weekday() == 0:
-            next_monday = now  # already Monday
-        else:
-            next_monday = now + timedelta(days=days_ahead if days_ahead > 0 else 7)
-        next_friday = next_monday + timedelta(days=4)
-        week_range = f"{next_monday.strftime('%d/%m')}–{next_friday.strftime('%d/%m/%Y')}"
+            # weekly_prep: Mon-Fri = current week, Sat/Sun = next week
+            weekday = now.weekday()
+            if weekday <= 4:  # Mon-Fri: current week
+                monday = now - timedelta(days=weekday)
+            else:  # Sat/Sun: next week
+                monday = now + timedelta(days=(7 - weekday))
+            friday = monday + timedelta(days=4)
+            week_range = f"{monday.strftime('%d/%m')}–{friday.strftime('%d/%m/%Y')}"
 
     print(f"  Title date: {title_date_str} ({title_day_name}), week_range: {week_range}")
 
