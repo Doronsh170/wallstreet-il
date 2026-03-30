@@ -35,13 +35,29 @@ def get_next_trading_day(now, holidays):
     return now + timedelta(days=1)
 
 def get_last_trading_day(now, holidays):
-    """Find the most recent trading day (today if trading, else look back)"""
-    d = now
+    """Find the most recent COMPLETED trading day.
+    If today is a trading day AND market has closed (after 23:00 Israel), return today.
+    Otherwise, look backwards from yesterday."""
+    if is_trading_day(now, holidays):
+        hour = now.hour
+        if hour >= 23:  # Market closed at 23:00 Israel time
+            return now
+    # Start from yesterday and go back
+    d = now - timedelta(days=1)
     for _ in range(10):
         if is_trading_day(d, holidays):
             return d
         d -= timedelta(days=1)
-    return now
+    return now - timedelta(days=1)
+
+def get_prev_week_range_str(now):
+    """Get the Mon-Fri date range for the PREVIOUS completed trading week."""
+    weekday = now.weekday()  # 0=Mon
+    # Go to last week's Monday
+    days_to_last_monday = weekday + 7
+    last_monday = now - timedelta(days=days_to_last_monday)
+    last_friday = last_monday + timedelta(days=4)
+    return f"{last_monday.strftime('%d/%m')}–{last_friday.strftime('%d/%m/%Y')}"
 
 def get_week_range_str(now):
     """Get the Mon-Fri date range for the current/most recent trading week.
@@ -110,7 +126,8 @@ def get_prompt(tweets, review_type, date_str, day_name, title_date_str=None, tit
     tweets_block = f"Source tweets/posts from X (Twitter) — date: {date_str}:\n{tweets}"
 
     # Day-aware headings
-    is_non_trading = day_name in ["שישי", "שבת", "ראשון"]
+    # Monday should also be treated as "after gap" since the last trading was Friday
+    is_non_trading = day_name in ["שישי", "שבת", "ראשון", "שני"]
 
     # daily_prep headings
     overnight_heading = "מה קרה בסוף השבוע" if is_non_trading else "מה קרה בלילה"
@@ -298,7 +315,10 @@ def main():
         title_day_name = PY_TO_HEB[target.weekday()]
 
     elif REVIEW_TYPE in ("weekly_prep", "weekly_summary"):
-        week_range = get_week_range_str(now)
+        if REVIEW_TYPE == "weekly_summary":
+            week_range = get_prev_week_range_str(now)
+        else:
+            week_range = get_week_range_str(now)
 
     if REVIEW_TYPE == "weekly_prep":
         # For weekly prep, compute next week's range
