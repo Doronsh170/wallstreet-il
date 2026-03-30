@@ -1,8 +1,7 @@
 import json, os, requests
 from datetime import datetime, timezone, timedelta
-from zoneinfo import ZoneInfo
 
-ISR_TZ = ZoneInfo("Asia/Jerusalem")
+ISR_TZ = timezone(timedelta(hours=3))
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 TWITTER_API_KEY = os.environ["TWITTER_API_KEY"]
 REVIEW_TYPE = os.environ.get("REVIEW_TYPE", "daily_prep")
@@ -126,23 +125,6 @@ def get_prompt(tweets, review_type, date_str, day_name, title_date_str=None, tit
 
     tweets_block = f"Source tweets/posts from X (Twitter) — date: {date_str}:\n{tweets}"
 
-    # Day-aware headings
-    # Monday should also be treated as "after gap" since the last trading was Friday
-    is_non_trading = day_name in ["שישי", "שבת", "ראשון", "שני"]
-
-    # daily_prep headings
-    overnight_heading = "מה קרה בסוף השבוע" if is_non_trading else "מה קרה בלילה"
-    market_today_heading = "מה יזיז את השוק ביום המסחר הקרוב" if is_non_trading else "מה יזיז את השוק היום"
-    overnight_desc = "Key developments over the weekend" if is_non_trading else "Key overnight developments"
-    today_catalysts = "Next trading day's catalysts" if is_non_trading else "Today's catalysts"
-    today_ref = "the next trading day" if is_non_trading else "today"
-
-    # daily_summary headings
-    close_heading = "כך נסגר יום המסחר האחרון" if is_non_trading else "כך נסגר היום"
-    tomorrow_heading = "מה זה אומר ליום המסחר הבא" if is_non_trading else "מה זה אומר למחר"
-    close_desc = "the last trading day" if is_non_trading else "today"
-    tomorrow_ref = "the next trading session" if is_non_trading else "tomorrow"
-
     if review_type == "daily_prep":
         return f"""You are a senior Wall Street market analyst writing a pre-market briefing in Hebrew.
 
@@ -158,7 +140,7 @@ CRITICAL — OUTPUT FORMAT:
 - Include 7-12 bullets covering the most important topics: geopolitics, macro data, index/futures moves, notable stocks, commodities, Fed/rates, sentiment — whatever is in the tweets.
 - Do NOT group bullets under sub-headings. Do NOT use 📍 or any section dividers. Just a flat list.
 - Order bullets from most market-moving to least important.
-- The second section is "שורה תחתונה" — a single concise paragraph (NOT bullets), 2-3 sentences summarizing the dominant theme and main risk.
+- The second section is "שורה תחתונה" — a paragraph of 4-5 sentences (NOT bullets). Start with the dominant theme driving markets today. Then add analytical value: what is the key risk, what scenario would change the picture, and what specific level or event should investors watch. Give the reader an actionable mental framework for the day, not just a summary.
 
 {tweets_block}
 
@@ -180,7 +162,7 @@ CRITICAL — OUTPUT FORMAT:
 - Include 7-12 bullets covering: index performance (S&P 500, Nasdaq, Dow with %), notable stock moves ($TICKER +/- %), VIX, commodities, geopolitical impact, macro data, sector moves, institutional activity — whatever is in the tweets.
 - Do NOT group bullets under sub-headings. Do NOT use 📍 or any section dividers. Just a flat list.
 - Start with index performance bullets, then order by market impact.
-- The second section is "שורה תחתונה" — a single concise paragraph (NOT bullets), 2-3 sentences summarizing the key takeaway and what to watch for tomorrow.
+- The second section is "שורה תחתונה" — a paragraph of 4-5 sentences (NOT bullets). Start with the key takeaway from the session. Then analyze: what shifted in the market narrative today, what does the price action signal about investor positioning, and what specific data or event tomorrow could change the trend. Give forward-looking insight, not just a recap.
 
 {tweets_block}
 
@@ -205,7 +187,7 @@ CRITICAL — OUTPUT FORMAT:
   3. For each event: include the specific day and Israel time when known (e.g. "יום רביעי 21:00 שעון ישראל").
   4. End with notable companies expected to report earnings this week.
 - Do NOT repeat information across bullets. Each bullet = one unique fact.
-- The second section is "שורה תחתונה" — a single concise paragraph (NOT bullets), 2-3 sentences on the ONE thing to focus on this week and what would be bullish vs bearish.
+- The second section is "שורה תחתונה" — a paragraph of 4-5 sentences (NOT bullets). Start with the ONE dominant theme for the week. Then analyze: what is the market currently pricing in, what could surprise to the upside or downside, and what combination of events could trigger a significant move. End with a clear framework — what scenario is bullish and what is bearish.
 
 {tweets_block}
 
@@ -231,7 +213,7 @@ CRITICAL — OUTPUT FORMAT:
   4. Then notable earnings reports: company ($TICKER), stock move %, key result.
   5. End with sector rotation or institutional activity if relevant.
 - Do NOT repeat information across bullets. Each bullet = one unique fact.
-- The second section is "שורה תחתונה" — a single concise paragraph (NOT bullets), 2-3 sentences on the key takeaway from the week and what to watch next week.
+- The second section is "שורה תחתונה" — a paragraph of 4-5 sentences (NOT bullets). Start with the key narrative shift from this week. Then analyze: how did investor positioning change, what does the weekly price action imply about the medium-term trend, and what are the 2-3 most important things to watch next week and why they matter. Give strategic perspective, not just a data recap.
 
 {tweets_block}
 
@@ -263,48 +245,12 @@ Event types to include: macro data (NFP, CPI, PPI, PMI, GDP, jobless claims), Fe
 # GEMINI CALL
 # ══════════════════════════════════════════════════════════════
 
-def extract_json(text):
-    """Extract and parse JSON from Gemini response, handling common issues."""
-    text = text.strip()
-    # Remove backticks
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
-    if text.endswith("```"):
-        text = text[:-3]
-    text = text.strip()
-
-    # Try direct parse first
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-
-    # Extract JSON object between first { and last }
-    start = text.find("{")
-    end = text.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        candidate = text[start:end+1]
-        try:
-            return json.loads(candidate)
-        except json.JSONDecodeError:
-            pass
-        # Fix trailing commas before } or ]
-        import re
-        cleaned = re.sub(r',\s*([}\]])', r'\1', candidate)
-        try:
-            return json.loads(cleaned)
-        except json.JSONDecodeError as e:
-            print(f"  JSON parse error after cleanup: {e}")
-            print(f"  Raw text (last 300 chars): ...{text[-300:]}")
-            raise
-
-    raise Exception(f"No JSON object found in response. Text starts with: {text[:200]}")
-
-
-def call_gemini(prompt, max_retries=3):
+def call_gemini(prompt):
+    import time
+    max_retries = 3
     for attempt in range(max_retries):
         r = requests.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}",
+            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key={GEMINI_API_KEY}",
             headers={"Content-Type": "application/json"},
             json={
                 "contents": [{"parts": [{"text": prompt}]}],
@@ -319,15 +265,15 @@ def call_gemini(prompt, max_retries=3):
         resp_data = r.json()
         print(f"  Gemini status: {r.status_code} (attempt {attempt+1}/{max_retries})")
 
-        # Retry on 503 (overloaded)
-        if r.status_code == 503:
+        if r.status_code == 503 or r.status_code == 429:
             if attempt < max_retries - 1:
-                import time
-                print(f"  Gemini overloaded, waiting 30s...")
-                time.sleep(30)
+                wait = 30 * (attempt + 1)
+                print(f"  Gemini overloaded, retrying in {wait}s...")
+                time.sleep(wait)
                 continue
             else:
-                raise Exception("Gemini unavailable after all retries")
+                print(f"  Gemini still unavailable after {max_retries} attempts")
+                raise Exception(f"Gemini returned {r.status_code} after {max_retries} retries")
 
         candidate = resp_data.get("candidates", [{}])[0]
         content = candidate.get("content", {})
@@ -339,20 +285,28 @@ def call_gemini(prompt, max_retries=3):
                 text = part["text"]
 
         if not text:
+            if attempt < max_retries - 1:
+                print(f"  Gemini returned no text, retrying in 30s...")
+                time.sleep(30)
+                continue
             print(f"  Gemini raw response: {str(resp_data)[:500]}")
             raise Exception("Gemini returned no text")
 
+        text = text.strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+        if text.endswith("```"):
+            text = text[:-3]
+        text = text.strip()
+
         try:
-            return extract_json(text)
-        except (json.JSONDecodeError, Exception) as e:
-            if attempt < max_retries - 1:
-                import time
-                print(f"  JSON error, retrying in 10s...")
-                time.sleep(10)
-                continue
+            return json.loads(text)
+        except json.JSONDecodeError as e:
+            print(f"  JSON parse error: {e}")
+            print(f"  Raw text (last 300 chars): ...{text[-300:]}")
             raise
 
-    raise Exception("All retries failed")
+    raise Exception("call_gemini: exhausted all retries")
 
 # ══════════════════════════════════════════════════════════════
 # MAIN
@@ -391,7 +345,7 @@ def main():
 
     elif REVIEW_TYPE in ("weekly_prep", "weekly_summary"):
         if REVIEW_TYPE == "weekly_summary":
-            week_range = get_week_range_str(now)
+            week_range = get_prev_week_range_str(now)
         else:
             week_range = get_week_range_str(now)
 
