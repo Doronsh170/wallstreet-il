@@ -107,6 +107,7 @@
         if(st==='open')document.getElementById('timeWarning').classList.remove('hidden');
 
         function formatContent(text) {
+          if (Array.isArray(text)) text = text.join('\n');
           const lines = text.split('\n').filter(l => l.trim());
           const bullets = [];
           const nonBullets = [];
