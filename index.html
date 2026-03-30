@@ -272,7 +272,7 @@
       if (type === 'dailyPrep') {
         let best = null;
         for (let d = 1; d <= 5; d++) {
-          const r = calc(d, 14, 30);
+          const r = calc(d, 13, 30);
           if (!best || r.secs < best.secs) best = r;
         }
         return best;
