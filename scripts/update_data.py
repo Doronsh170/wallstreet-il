@@ -108,12 +108,21 @@ SHARED_RULES = """Rules:
 - Start each section directly with the key fact. No generic opening sentences.
 - Output pure JSON only, no backticks, no explanations.
 
+CRITICAL — INDEX PERFORMANCE (MANDATORY):
+- You MUST always include exact closing data for S&P 500, Nasdaq, and Dow Jones with % change and point levels.
+- If this data is NOT in the tweets, you MUST use Google Search to find it. This is not optional.
+- NEVER write vague descriptions like "the market closed in green territory" or "mixed trading" without exact numbers.
+- The index data sets the tone for the entire review. Get it right.
+
 CRITICAL — DATA ACCURACY:
-- ONLY use numbers, prices, percentages, and data points that explicitly appear in the source tweets/posts below.
-- NEVER invent, estimate, or recall prices from memory. If a specific price (gold, oil, index level, stock price) does not appear in the tweets, do NOT include it. Skip it or write "לא דווח".
+- For data OTHER than index performance: ONLY use numbers that explicitly appear in the source tweets/posts below.
+- NEVER invent, estimate, or recall prices from memory. If a specific price (gold, oil, stock price) does not appear in the tweets, do NOT include it. Skip it or write "לא דווח".
 - If the tweets mention a percentage move but no absolute price, report only the percentage — do NOT guess the price.
 - Double-check every number you write: if you cannot point to a specific tweet that contains that number, remove it.
-- Getting a number wrong (e.g. writing $2,400 gold when it is actually $4,400) destroys credibility. When in doubt, omit."""
+
+CRITICAL — CONSISTENCY:
+- The "שורה תחתונה" paragraph MUST be consistent with the bullet points above it. If the bullets show the market rose sharply, do NOT call it "mixed trading" in the summary.
+- Read your own bullets before writing the bottom line to ensure no contradictions."""
 
 def get_prompt(tweets, review_type, date_str, day_name, title_date_str=None, title_day_name=None, week_range=None):
     """
