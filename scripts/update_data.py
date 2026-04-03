@@ -108,17 +108,18 @@ SHARED_RULES = """Rules:
 - Start each section directly with the key fact. No generic opening sentences.
 - Output pure JSON only, no backticks, no explanations.
 
-CRITICAL — INDEX PERFORMANCE (MANDATORY):
-- You MUST always include exact closing data for S&P 500, Nasdaq, and Dow Jones with % change and point levels.
-- If this data is NOT in the tweets, you MUST use Google Search to find it. This is not optional.
+CRITICAL — KEY MARKET DATA (MANDATORY VERIFICATION):
+- You MUST always include exact data for S&P 500, Nasdaq, and Dow Jones with % change and point levels.
+- You MUST verify via Google Search the current prices of: Brent crude oil, WTI crude oil, gold, and any other commodity you mention.
+- If a tweet states a price that seems extreme or unusual (e.g. Brent at $141 when it was recently at $110), you MUST verify it via Google Search before including it.
+- NEVER trust a single tweet for major price data. Always cross-reference with Google Search.
 - NEVER write vague descriptions like "the market closed in green territory" or "mixed trading" without exact numbers.
-- The index data sets the tone for the entire review. Get it right.
 
 CRITICAL — DATA ACCURACY:
-- For data OTHER than index performance: ONLY use numbers that explicitly appear in the source tweets/posts below.
-- NEVER invent, estimate, or recall prices from memory. If a specific price (gold, oil, stock price) does not appear in the tweets, do NOT include it. Skip it or write "לא דווח".
+- For stock-specific data ($TICKER moves, earnings, upgrades): use numbers from the tweets.
+- NEVER invent, estimate, or recall prices from memory.
 - If the tweets mention a percentage move but no absolute price, report only the percentage — do NOT guess the price.
-- Double-check every number you write: if you cannot point to a specific tweet that contains that number, remove it.
+- Double-check every number you write. If a price seems unusually high or low compared to recent levels, verify it via Google Search before including it. Getting a number wrong destroys credibility.
 
 CRITICAL — CONSISTENCY:
 - The "שורה תחתונה" paragraph MUST be consistent with the bullet points above it. If the bullets show the market rose sharply, do NOT call it "mixed trading" in the summary.
@@ -164,7 +165,10 @@ CRITICAL — OUTPUT FORMAT:
   4. Scheduled events TODAY: economic data releases (with Israel time), earnings reports, Fed speakers.
   5. Overnight developments: geopolitical, commodity moves, Asia/Europe markets.
   6. Notable stock catalysts for today: pre-market moves, upgrades/downgrades, news.
-- The second section is "שורה תחתונה" — a paragraph of 4-5 sentences (NOT bullets). Start with the dominant theme for today's session. Then: what is the key risk, what scenario would change the picture, and what specific level or event should investors watch. If no trading today, discuss what to watch for the next trading day.
+- The second section is "שורה תחתונה" — a paragraph of 4-5 sentences (NOT bullets).
+  - If today IS a trading day: Start with the dominant theme for today's session. Then: what is the key risk, what scenario would change the picture, and what specific level or event should investors watch.
+  - If today is NOT a trading day: Do NOT write "השוק נפתח היום" or anything implying the market is open. Instead, summarize the key developments since the last session, what risks are building over the break, and what to watch for when trading resumes. Start with "אין מסחר היום" or "השוק סגור היום".
+  - CRITICAL: The bottom line MUST be consistent with the bullets above. If the first bullet says "אין מסחר", the bottom line CANNOT say "השוק נפתח".
 
 {tweets_block}
 
