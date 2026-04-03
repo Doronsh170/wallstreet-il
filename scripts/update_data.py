@@ -124,7 +124,7 @@ CRITICAL — CONSISTENCY:
 - The "שורה תחתונה" paragraph MUST be consistent with the bullet points above it. If the bullets show the market rose sharply, do NOT call it "mixed trading" in the summary.
 - Read your own bullets before writing the bottom line to ensure no contradictions."""
 
-def get_prompt(tweets, review_type, date_str, day_name, title_date_str=None, title_day_name=None, week_range=None):
+def get_prompt(tweets, review_type, date_str, day_name, title_date_str=None, title_day_name=None, week_range=None, is_trading=True):
     """
     date_str / day_name = when the script runs (today)
     title_date_str / title_day_name = the trading day the title should reference
@@ -138,9 +138,17 @@ def get_prompt(tweets, review_type, date_str, day_name, title_date_str=None, tit
     tweets_block = f"Source tweets/posts from X (Twitter) — date: {date_str}:\n{tweets}"
 
     if review_type == "daily_prep":
-        return f"""You are a senior Wall Street market analyst writing a pre-market briefing in Hebrew.
+        trading_status = "TODAY IS A REGULAR TRADING DAY." if is_trading else "TODAY IS NOT A TRADING DAY (weekend or US holiday). There is NO market open today. Make this clear in the first bullet."
+        return f"""You are a senior Wall Street market analyst writing a PRE-MARKET briefing in Hebrew for the trading day of {title_date_str}.
 
-Your task: Summarize in bullet points everything investors need to know before today's US market open, based on the tweets/posts below. Write a flat list of the most important facts — no topic groupings, no sub-sections, just one sharp bullet after another.
+TRADING STATUS: {trading_status}
+
+CRITICAL — THIS IS A FORWARD-LOOKING BRIEFING, NOT A SUMMARY:
+- This is an "הכנה ליום מסחר" — what investors need to know BEFORE the market opens.
+- Focus on: what is EXPECTED today, what CATALYSTS are scheduled, what RISKS lie ahead, what happened OVERNIGHT that will affect today's open.
+- Do NOT write a summary of yesterday's trading. Yesterday's data (closing prices, moves) should only appear as CONTEXT in 1-2 bullets max, not as the main content.
+- The majority of bullets (at least 70%) must be FORWARD-LOOKING: upcoming events, scheduled data releases, pre-market moves, overnight developments, geopolitical risks for today.
+- If today is a US holiday or weekend (no trading), state this clearly in the first bullet and focus on what happened since the last session and what to watch for the next trading day.
 
 {SHARED_RULES}
 
@@ -149,10 +157,14 @@ CRITICAL — OUTPUT FORMAT:
 - The first section's "content" field MUST be a flat list of bullet points. Every bullet starts with "* " (asterisk + space).
 - Each bullet: "* Sub-heading: one concise fact." The sub-heading is a short topic label (2-4 words), plain text, no formatting tags.
 - Do NOT use <b> tags or any HTML formatting. Plain text only.
-- Include 7-12 bullets covering the most important topics: geopolitics, macro data, index/futures moves, notable stocks, commodities, Fed/rates, sentiment — whatever is in the tweets.
-- Do NOT group bullets under sub-headings. Do NOT use 📍 or any section dividers. Just a flat list.
-- Order bullets from most market-moving to least important.
-- The second section is "שורה תחתונה" — a paragraph of 4-5 sentences (NOT bullets). Start with the dominant theme driving markets today. Then add analytical value: what is the key risk, what scenario would change the picture, and what specific level or event should investors watch. Give the reader an actionable mental framework for the day, not just a summary.
+- Include 7-12 bullets. Order:
+  1. If no trading today — first bullet must state this clearly.
+  2. 1-2 bullets of context: how did the last session close (index levels with %).
+  3. Pre-market/futures data if available.
+  4. Scheduled events TODAY: economic data releases (with Israel time), earnings reports, Fed speakers.
+  5. Overnight developments: geopolitical, commodity moves, Asia/Europe markets.
+  6. Notable stock catalysts for today: pre-market moves, upgrades/downgrades, news.
+- The second section is "שורה תחתונה" — a paragraph of 4-5 sentences (NOT bullets). Start with the dominant theme for today's session. Then: what is the key risk, what scenario would change the picture, and what specific level or event should investors watch. If no trading today, discuss what to watch for the next trading day.
 
 {tweets_block}
 
@@ -392,7 +404,8 @@ def main():
     prompt = get_prompt(tweets, REVIEW_TYPE, date_str, day_name,
                         title_date_str=title_date_str,
                         title_day_name=title_day_name,
-                        week_range=week_range)
+                        week_range=week_range,
+                        is_trading=today_is_trading)
     if not prompt:
         print(f"Unknown review type: {REVIEW_TYPE}")
         return
