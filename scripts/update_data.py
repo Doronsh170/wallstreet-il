@@ -367,6 +367,7 @@ def main():
     title_date_str = date_str
     title_day_name = day_name
     week_range = None
+    target_is_trading = today_is_trading
 
     if REVIEW_TYPE == "daily_prep":
         # Title should reference the NEXT trading day
@@ -376,6 +377,8 @@ def main():
             target = get_next_trading_day(now, holidays)
         title_date_str = target.strftime("%Y-%m-%d")
         title_day_name = PY_TO_HEB[target.weekday()]
+        # is_trading should reflect the TARGET date, not today
+        target_is_trading = is_trading_day(target, holidays)
 
     elif REVIEW_TYPE == "daily_summary":
         # Title should reference the LAST trading day
@@ -409,7 +412,7 @@ def main():
                         title_date_str=title_date_str,
                         title_day_name=title_day_name,
                         week_range=week_range,
-                        is_trading=today_is_trading)
+                        is_trading=target_is_trading if REVIEW_TYPE == "daily_prep" else today_is_trading)
     if not prompt:
         print(f"Unknown review type: {REVIEW_TYPE}")
         return
