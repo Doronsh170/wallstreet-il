@@ -139,17 +139,33 @@ def get_prompt(tweets, review_type, date_str, day_name, title_date_str=None, tit
     tweets_block = f"Source tweets/posts from X (Twitter) — date: {date_str}:\n{tweets}"
 
     if review_type == "daily_prep":
-        trading_status = "TODAY IS A REGULAR TRADING DAY." if is_trading else "TODAY IS NOT A TRADING DAY (weekend or US holiday). There is NO market open today. Make this clear in the first bullet."
-        return f"""You are a senior Wall Street market analyst writing a PRE-MARKET briefing in Hebrew for the trading day of {title_date_str}.
+        is_same_day = (date_str == title_date_str)
+        if is_trading:
+            if is_same_day:
+                trading_status = "The briefing is for TODAY — a regular trading day. Use 'היום' and 'הבוקר' freely."
+            else:
+                trading_status = f"IMPORTANT: This script runs on {date_str} ({day_name}) but the briefing is for the NEXT trading day: {title_date_str} ({title_day_name}). Do NOT use 'היום' or 'הבוקר' — use 'ביום {title_day_name}' or 'בפתיחת המסחר ביום {title_day_name}' instead. Do NOT mention futures or pre-market data as if they are live right now — they are not available yet."
+        else:
+            trading_status = f"The target date {title_date_str} is NOT a trading day (weekend or US holiday). State this clearly in the first bullet."
+        return f"""You are a senior Wall Street market analyst writing a PRE-MARKET briefing in Hebrew.
 
-TRADING STATUS: {trading_status}
+DATES:
+- Script run date: {date_str} ({day_name})
+- Briefing target date: {title_date_str} ({title_day_name})
+- {trading_status}
 
 CRITICAL — THIS IS A FORWARD-LOOKING BRIEFING, NOT A SUMMARY:
 - This is an "הכנה ליום מסחר" — what investors need to know BEFORE the market opens.
-- Focus on: what is EXPECTED today, what CATALYSTS are scheduled, what RISKS lie ahead, what happened OVERNIGHT that will affect today's open.
-- Do NOT write a summary of yesterday's trading. Yesterday's data (closing prices, moves) should only appear as CONTEXT in 1-2 bullets max, not as the main content.
-- The majority of bullets (at least 70%) must be FORWARD-LOOKING: upcoming events, scheduled data releases, pre-market moves, overnight developments, geopolitical risks for today.
-- If today is a US holiday or weekend (no trading), state this clearly in the first bullet and focus on what happened since the last session and what to watch for the next trading day.
+- DO NOT summarize the last trading session. There is a separate "סיכום יומי" review for that.
+- The ONLY backward-looking data allowed is ONE bullet with index closing levels for context. Nothing more.
+- ALL other bullets must be FORWARD-LOOKING:
+  * What economic data is scheduled for the target trading day (with Israel times)?
+  * What earnings reports are expected?
+  * What geopolitical risks or developments could move markets?
+  * What overnight news broke that will affect the open?
+  * What sectors or stocks have catalysts coming?
+  * What are analysts/strategists saying about today's expected moves?
+- Think of it as: "מה צפוי? מה הסיכונים? מה לעקוב אחריו?" — NOT "מה קרה?"
 
 {SHARED_RULES}
 
@@ -159,16 +175,21 @@ CRITICAL — OUTPUT FORMAT:
 - Each bullet: "* Sub-heading: one concise fact." The sub-heading is a short topic label (2-4 words), plain text, no formatting tags.
 - Do NOT use <b> tags or any HTML formatting. Plain text only.
 - Include 7-12 bullets. Order:
-  1. If no trading today — first bullet must state this clearly.
-  2. 1-2 bullets of context: how did the last session close (index levels with %).
-  3. Pre-market/futures data if available.
-  4. Scheduled events TODAY: economic data releases (with Israel time), earnings reports, Fed speakers.
-  5. Overnight developments: geopolitical, commodity moves, Asia/Europe markets.
-  6. Notable stock catalysts for today: pre-market moves, upgrades/downgrades, news.
+  1. If the briefing is for a future date, first bullet states when trading resumes.
+  2. ONE bullet of context only: last session closing levels (S&P 500, Nasdaq, Dow with %). This is the ONLY backward-looking bullet allowed.
+  3. Then ALL remaining bullets must be forward-looking:
+     - Scheduled economic data for the target day (with Israel times)
+     - Expected earnings reports
+     - Geopolitical risks and overnight developments
+     - Commodity/currency moves that signal market direction
+     - Notable stock catalysts: upgrades, downgrades, news
+     - Pre-market/futures data ONLY if the briefing is for today
+  4. Do NOT include multiple bullets about what happened yesterday. One context bullet is enough.
 - The second section is "שורה תחתונה" — a paragraph of 4-5 sentences (NOT bullets).
-  - If today IS a trading day: Start with the dominant theme for today's session. Then: what is the key risk, what scenario would change the picture, and what specific level or event should investors watch.
-  - If today is NOT a trading day: Do NOT write "השוק נפתח היום" or anything implying the market is open. Instead, summarize the key developments since the last session, what risks are building over the break, and what to watch for when trading resumes. Start with "אין מסחר היום" or "השוק סגור היום".
-  - CRITICAL: The bottom line MUST be consistent with the bullets above. If the first bullet says "אין מסחר", the bottom line CANNOT say "השוק נפתח".
+  - If the briefing is for a same-day trading session: Start with the dominant theme for today's session. What is the key risk, what scenario would change the picture, what level or event to watch.
+  - If the briefing is prepared in advance (e.g. Sunday for Monday): Summarize key developments since the last session, what risks are building, and what to watch when trading resumes on the target day. Use "עם פתיחת המסחר ביום {title_day_name}" — NOT "היום".
+  - If the target day is NOT a trading day: Start with "אין מסחר" and focus on what to watch for the next session.
+  - CRITICAL: The language MUST match the timing. Never say "היום" or "הבוקר" if the trading day hasn't arrived yet.
 
 {tweets_block}
 
