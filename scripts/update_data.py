@@ -339,6 +339,10 @@ def call_gemini(prompt):
             text = text[:-3]
         text = text.strip()
 
+        # Remove Google Search grounding citations like [7, 9, 33] or [12]
+        import re
+        text = re.sub(r'\s*\[\d+(?:,\s*\d+)*\]', '', text)
+
         try:
             return json.loads(text)
         except json.JSONDecodeError as e:
