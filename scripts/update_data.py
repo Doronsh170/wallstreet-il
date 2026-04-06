@@ -364,6 +364,22 @@ def call_gemini(prompt):
         import re
         text = re.sub(r'\s*\[\d+(?:,\s*\d+)*\]', '', text)
 
+        # Extract only the JSON object — Gemini sometimes appends HTML or extra text
+        # Find the opening { and the matching closing }
+        start = text.find('{')
+        if start >= 0:
+            depth = 0
+            end = start
+            for i in range(start, len(text)):
+                if text[i] == '{':
+                    depth += 1
+                elif text[i] == '}':
+                    depth -= 1
+                    if depth == 0:
+                        end = i + 1
+                        break
+            text = text[start:end]
+
         try:
             return json.loads(text)
         except json.JSONDecodeError as e:
