@@ -20,6 +20,13 @@
     .content-area li::before { content: "•"; position: absolute; right: 0; top: 0; color: #9a7b2d; font-weight: bold; font-size: 1.1em; }
     .content-area b { color: #1e293b; font-weight: 700; }
     .bottom-line { background: linear-gradient(135deg, #fdf8ed 0%, #f7f8fc 100%); border-right: 4px solid #9a7b2d; }
+    .share-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s; border: 1px solid #e2e5ec; }
+    .share-btn:hover { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .share-btn-whatsapp { background: #25D366; color: white; border-color: #25D366; }
+    .share-btn-whatsapp:hover { background: #1da851; }
+    .share-btn-pdf { background: white; color: #334155; }
+    .share-btn-pdf:hover { background: #f7f8fc; }
+    @media print { .bg-wall-navy, header, footer, nav, .share-buttons, #timeWarning, #noTradeWarning, .text-wall-400.border-t { display: none !important; } body { background: white !important; } main { padding: 0 !important; } }
   </style>
 </head>
 <body class="min-h-screen text-wall-800">
@@ -73,6 +80,11 @@
     </div>
 
     <div id="contentArea" class="space-y-4"></div>
+
+    <div id="shareButtons" class="hidden share-buttons flex items-center gap-3 mt-6 mb-6">
+      <button onclick="shareWhatsApp()" class="share-btn share-btn-whatsapp">📱 שלח בוואטסאפ</button>
+      <button onclick="exportPDF()" class="share-btn share-btn-pdf">📄 שמור PDF</button>
+    </div>
 
     <div class="mt-8 text-xs text-wall-400 border-t border-wall-200 pt-4">
       <p>מקורות: @AIStockSavvy, @wallstengine, @DeIaone, @StockMKTNewz, @zerohedge, @financialjuice</p>
@@ -130,8 +142,34 @@
           const isBottomLine = s.heading === 'שורה תחתונה';
           return `<div class="${isBottomLine ? 'bottom-line' : 'bg-white'} border border-wall-200 rounded-xl p-5 shadow-sm content-area"><h2 class="font-heading font-bold ${isBottomLine ? 'text-wall-900' : 'text-wall-gold'} mb-3">${isBottomLine ? '📌 ' : ''}${s.heading}</h2>${formatContent(s.content)}</div>`;
         }).join('');
+        document.getElementById('shareButtons').classList.remove('hidden');
       }catch(e){console.error(e);}
     }
+
+    function getReviewText() {
+      const title = document.getElementById('pageDate').textContent;
+      const area = document.getElementById('contentArea');
+      let text = title + '\n\n';
+      area.querySelectorAll('.content-area').forEach(section => {
+        const heading = section.querySelector('h2').textContent;
+        text += heading + '\n';
+        section.querySelectorAll('li').forEach(li => { text += '• ' + li.textContent + '\n'; });
+        section.querySelectorAll('p.text-wall-700').forEach(p => { text += p.textContent + '\n'; });
+        text += '\n';
+      });
+      text += 'וול סטריט IL · doronsh170.github.io/wallstreet-il';
+      return text;
+    }
+
+    function shareWhatsApp() {
+      const text = getReviewText();
+      window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
+    }
+
+    function exportPDF() {
+      window.print();
+    }
+
     init();updateClock();setInterval(updateClock,1000);
   </script>
 </body>
