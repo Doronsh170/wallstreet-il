@@ -308,7 +308,8 @@ Event types to include: macro data (NFP, CPI, PPI, PMI, GDP, jobless claims), Fe
 
 def call_gemini(prompt):
     import time
-    max_retries = 3
+    max_retries = 5
+    retry_waits = [30, 60, 90, 120, 180]  # Total ~8 minutes of retries
     for attempt in range(max_retries):
         r = requests.post(
             f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key={GEMINI_API_KEY}",
@@ -328,7 +329,7 @@ def call_gemini(prompt):
 
         if r.status_code == 503 or r.status_code == 429:
             if attempt < max_retries - 1:
-                wait = 30 * (attempt + 1)
+                wait = retry_waits[attempt]
                 print(f"  Gemini overloaded, retrying in {wait}s...")
                 time.sleep(wait)
                 continue
@@ -347,8 +348,9 @@ def call_gemini(prompt):
 
         if not text:
             if attempt < max_retries - 1:
-                print(f"  Gemini returned no text, retrying in 30s...")
-                time.sleep(30)
+                wait = retry_waits[attempt]
+                print(f"  Gemini returned no text, retrying in {wait}s...")
+                time.sleep(wait)
                 continue
             print(f"  Gemini raw response: {str(resp_data)[:500]}")
             raise Exception("Gemini returned no text")
