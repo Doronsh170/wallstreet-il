@@ -307,9 +307,11 @@ Event types to include: macro data (NFP, CPI, PPI, PMI, GDP, jobless claims), Fe
 # ══════════════════════════════════════════════════════════════
 
 def call_gemini(prompt):
-    import time
+    import time, re
     max_retries = 5
     retry_waits = [30, 60, 90, 120, 180]  # Total ~8 minutes of retries
+    empty_text_count = 0  # Track how many times we got 200 with no text
+
     for attempt in range(max_retries):
         r = requests.post(
             f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key={GEMINI_API_KEY}",
@@ -347,49 +349,109 @@ def call_gemini(prompt):
                 text = part["text"]
 
         if not text:
+            empty_text_count += 1
             if attempt < max_retries - 1:
                 wait = retry_waits[attempt]
                 print(f"  Gemini returned no text, retrying in {wait}s...")
                 time.sleep(wait)
                 continue
-            print(f"  Gemini raw response: {str(resp_data)[:500]}")
-            raise Exception("Gemini returned no text")
+            # All retries with grounding exhausted — fall through to fallback below
+            print(f"  Gemini returned no text in all {max_retries} attempts with grounding")
+            break  # Exit loop to try fallback
 
-        text = text.strip()
-        if text.startswith("```"):
-            text = text.split("\n", 1)[1] if "\n" in text else text[3:]
-        if text.endswith("```"):
-            text = text[:-3]
-        text = text.strip()
+        # ── Got text — parse it ──
+        return _parse_gemini_text(text)
 
-        # Remove Google Search grounding citations like [7, 9, 33] or [12]
-        import re
-        text = re.sub(r'\s*\[\d+(?:,\s*\d+)*\]', '', text)
+    # ══════════════════════════════════════════════════════════
+    # FALLBACK: retry WITHOUT grounding (no Google Search tool)
+    # This handles the known Gemini bug where grounding returns
+    # 200 + metadata but no generated text.
+    # ══════════════════════════════════════════════════════════
+    if empty_text_count > 0:
+        print(f"  ⚠ Fallback: retrying WITHOUT Google Search grounding...")
+        for fallback_attempt in range(3):
+            try:
+                r = requests.post(
+                    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key={GEMINI_API_KEY}",
+                    headers={"Content-Type": "application/json"},
+                    json={
+                        "contents": [{"parts": [{"text": prompt}]}],
+                        # NO "tools" key — no grounding
+                        "generationConfig": {
+                            "temperature": 0.7,
+                            "maxOutputTokens": 8192
+                        }
+                    }
+                )
 
-        # Extract only the JSON object — Gemini sometimes appends HTML or extra text
-        # Find the opening { and the matching closing }
-        start = text.find('{')
-        if start >= 0:
-            depth = 0
-            end = start
-            for i in range(start, len(text)):
-                if text[i] == '{':
-                    depth += 1
-                elif text[i] == '}':
-                    depth -= 1
-                    if depth == 0:
-                        end = i + 1
-                        break
-            text = text[start:end]
+                resp_data = r.json()
+                print(f"  Fallback status: {r.status_code} (attempt {fallback_attempt+1}/3)")
 
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError as e:
-            print(f"  JSON parse error: {e}")
-            print(f"  Raw text (last 300 chars): ...{text[-300:]}")
-            raise
+                if r.status_code != 200:
+                    wait = retry_waits[min(fallback_attempt, len(retry_waits)-1)]
+                    print(f"  Fallback failed ({r.status_code}), retrying in {wait}s...")
+                    time.sleep(wait)
+                    continue
 
-    raise Exception("call_gemini: exhausted all retries")
+                candidate = resp_data.get("candidates", [{}])[0]
+                content = candidate.get("content", {})
+                parts = content.get("parts", [])
+
+                text = ""
+                for part in parts:
+                    if "text" in part:
+                        text = part["text"]
+
+                if text:
+                    print(f"  ✓ Fallback succeeded (without grounding)")
+                    return _parse_gemini_text(text)
+                else:
+                    print(f"  Fallback returned no text, attempt {fallback_attempt+1}/3")
+                    time.sleep(30)
+
+            except Exception as e:
+                print(f"  Fallback error: {e}")
+                time.sleep(30)
+
+    raise Exception("Gemini returned no text (with and without grounding)")
+
+
+def _parse_gemini_text(text):
+    """Clean and parse Gemini response text into JSON."""
+    import re
+
+    text = text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+    if text.endswith("```"):
+        text = text[:-3]
+    text = text.strip()
+
+    # Remove Google Search grounding citations like [7, 9, 33] or [12]
+    text = re.sub(r'\s*\[\d+(?:,\s*\d+)*\]', '', text)
+
+    # Extract only the JSON object — Gemini sometimes appends HTML or extra text
+    start = text.find('{')
+    if start >= 0:
+        depth = 0
+        end = start
+        for i in range(start, len(text)):
+            if text[i] == '{':
+                depth += 1
+            elif text[i] == '}':
+                depth -= 1
+                if depth == 0:
+                    end = i + 1
+                    break
+        text = text[start:end]
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as e:
+        print(f"  JSON parse error: {e}")
+        print(f"  Raw text (last 300 chars): ...{text[-300:]}")
+        raise
+
 
 # ══════════════════════════════════════════════════════════════
 # MAIN
