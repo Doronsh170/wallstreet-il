@@ -7,7 +7,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&family=Rubik:wght@400;500;700&display=swap" rel="stylesheet">
   <script>tailwind.config={theme:{extend:{colors:{wall:{50:'#f7f8fc',100:'#eef0f6',200:'#e2e5ec',300:'#cbd0db',400:'#94a3b8',500:'#64748b',600:'#475569',700:'#334155',800:'#1e293b',900:'#0f172a',gold:'#9a7b2d',goldLight:'#b8942f',goldBg:'#fdf8ed',goldBorder:'#e8d5a0',green:'#16a34a',greenBg:'#ecfdf5',red:'#dc2626',redBg:'#fef2f2',navy:'#1a2332'}},fontFamily:{body:['Heebo','sans-serif'],heading:['Rubik','sans-serif']}}}}</script>
-  <style>body{font-family:'Heebo',sans-serif;background:#f0f2f7}.pulse-dot{animation:pulse 2s ease-in-out infinite}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}.fade-in{animation:fadeIn .6s ease-out}@keyframes fadeIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}.content-area ul{list-style:none;padding:0;margin:0}.content-area li{position:relative;padding-right:18px;margin-bottom:8px;line-height:1.7}.content-area li::before{content:"•";position:absolute;right:0;top:0;color:#9a7b2d;font-weight:bold;font-size:1.1em}.bottom-line{background:linear-gradient(135deg,#fdf8ed 0%,#f7f8fc 100%);border-right:4px solid #9a7b2d}</style>
+  <style>body{font-family:'Heebo',sans-serif;background:#f0f2f7}.pulse-dot{animation:pulse 2s ease-in-out infinite}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}.fade-in{animation:fadeIn .6s ease-out}@keyframes fadeIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}.content-area ul{list-style:none;padding:0;margin:0}.content-area li{position:relative;padding-right:18px;margin-bottom:8px;line-height:1.7}.content-area li::before{content:"•";position:absolute;right:0;top:0;color:#9a7b2d;font-weight:bold;font-size:1.1em}.bottom-line{background:linear-gradient(135deg,#fdf8ed 0%,#f7f8fc 100%);border-right:4px solid #9a7b2d}.share-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;transition:all 0.2s;border:1px solid #e2e5ec}.share-btn:hover{transform:translateY(-1px);box-shadow:0 2px 8px rgba(0,0,0,0.1)}.share-btn-whatsapp{background:#25D366;color:white;border-color:#25D366}.share-btn-whatsapp:hover{background:#1da851}.share-btn-pdf{background:white;color:#334155}.share-btn-pdf:hover{background:#f7f8fc}@media print{.bg-wall-navy,header,footer,nav,.share-buttons,#updateNotice,.text-wall-400.border-t{display:none!important}body{background:white!important}main{padding:0!important}}</style>
 </head>
 <body class="min-h-screen text-wall-800">
   <div class="bg-wall-navy"><div class="max-w-6xl mx-auto px-4 py-2 flex items-center justify-between text-xs text-gray-300"><div id="marketStatusBar" class="flex items-center gap-2"><span class="pulse-dot w-2 h-2 rounded-full bg-gray-400 inline-block"></span><span>טוען...</span></div><div id="clockBar" class="font-mono"></div></div></div>
@@ -19,6 +19,10 @@
       <p id="pageDate" class="text-sm text-wall-500 mt-1">טוען...</p>
     </div>
     <div id="contentArea" class="space-y-4"></div>
+    <div id="shareButtons" class="hidden share-buttons flex items-center gap-3 mt-6 mb-6">
+      <button onclick="shareWhatsApp()" class="share-btn share-btn-whatsapp">📱 שלח בוואטסאפ</button>
+      <button onclick="exportPDF()" class="share-btn share-btn-pdf">📄 שמור PDF</button>
+    </div>
     <div id="updateNotice" class="hidden bg-wall-100 border border-wall-200 rounded-xl p-3 mt-4 text-center">
       <p class="text-wall-500 text-sm">📅 הסיכום הבא יתעדכן במוצ״ש הקרוב בשעה 01:00</p>
     </div>
@@ -56,7 +60,26 @@
         document.getElementById('contentArea').innerHTML=section.sections.map(s=>{
           const isBottomLine = s.heading === 'שורה תחתונה';
           return '<div class="' + (isBottomLine ? 'bottom-line' : 'bg-white') + ' border border-wall-200 rounded-xl p-5 shadow-sm content-area"><h2 class="font-heading font-bold ' + (isBottomLine ? 'text-wall-900' : 'text-wall-gold') + ' mb-3">' + (isBottomLine ? '📌 ' : '') + s.heading + '</h2>' + formatContent(s.content) + '</div>';
-        }).join('');document.getElementById('updateNotice').classList.remove('hidden');}catch(e){console.error(e);}}
+        }).join('');document.getElementById('updateNotice').classList.remove('hidden');document.getElementById('shareButtons').classList.remove('hidden');}catch(e){console.error(e);}}
+
+    function getReviewText() {
+      const title = document.getElementById('pageDate').textContent;
+      const area = document.getElementById('contentArea');
+      let text = title + '\n\n';
+      area.querySelectorAll('.content-area').forEach(function(section) {
+        const heading = section.querySelector('h2').textContent;
+        text += heading + '\n';
+        section.querySelectorAll('li').forEach(function(li) { text += '• ' + li.textContent + '\n'; });
+        section.querySelectorAll('p.text-wall-700').forEach(function(p) { text += p.textContent + '\n'; });
+        text += '\n';
+      });
+      text += 'וול סטריט IL · doronsh170.github.io/wallstreet-il';
+      return text;
+    }
+
+    function shareWhatsApp() { window.open('https://wa.me/?text=' + encodeURIComponent(getReviewText()), '_blank'); }
+    function exportPDF() { window.print(); }
+
     init();updateClock();setInterval(updateClock,1000);
   </script>
 </body>
