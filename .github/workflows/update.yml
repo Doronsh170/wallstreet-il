@@ -64,6 +64,7 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TWITTER_API_KEY: ${{ secrets.TWITTER_API_KEY }}
+          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
           REVIEW_TYPE: ${{ steps.type.outputs.type }}
         run: python scripts/update_data.py
 
@@ -72,6 +73,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data.json
-          git diff --staged --quiet || git commit -m "Update ${{ steps.type.outputs.type }} - $(date -u +%Y-%m-%dT%H:%M:%S)"
-          git pull --rebase || true
+          git diff --staged --quiet && echo "No changes to commit" && exit 0
+          git commit -m "Update ${{ steps.type.outputs.type }} - $(date -u +%Y-%m-%dT%H:%M:%S)"
+          git pull --rebase origin main || { echo "Rebase conflict — data already updated by another run, skipping."; git rebase --abort; exit 0; }
           git push
