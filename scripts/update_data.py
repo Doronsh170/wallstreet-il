@@ -4,11 +4,73 @@ from datetime import datetime, timezone, timedelta
 ISR_TZ = timezone(timedelta(hours=3))
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 TWITTER_API_KEY = os.environ["TWITTER_API_KEY"]
+FINNHUB_API_KEY = os.environ.get("FINNHUB_API_KEY", "")
 REVIEW_TYPE = os.environ.get("REVIEW_TYPE", "daily_prep")
 
 ACCOUNTS = ["AIStockSavvy","wallstengine","DeIaone","StockMKTNewz","zerohedge","financialjuice"]
 
 PY_TO_HEB = {0: "שני", 1: "שלישי", 2: "רביעי", 3: "חמישי", 4: "שישי", 5: "שבת", 6: "ראשון"}
+
+def fetch_market_data():
+    """Fetch verified market data from Finnhub API."""
+    if not FINNHUB_API_KEY:
+        print("  No FINNHUB_API_KEY, skipping market data fetch")
+        return ""
+
+    symbols = {
+        # Major indices
+        "SPY": "S&P 500 (SPY ETF)",
+        "QQQ": "Nasdaq 100 (QQQ ETF)",
+        "DIA": "Dow Jones (DIA ETF)",
+        "IWM": "Russell 2000 (IWM ETF)",
+        # Commodities
+        "USO": "WTI Crude Oil (USO ETF)",
+        "BNO": "Brent Crude Oil (BNO ETF)",
+        "GLD": "Gold (GLD ETF)",
+        # Crypto
+        "IBIT": "Bitcoin (IBIT ETF)",
+        # Volatility
+        "VIXY": "VIX (VIXY ETF)",
+        # Bonds
+        "TLT": "US 20Y+ Bonds (TLT ETF)",
+        # Dollar
+        "UUP": "US Dollar (UUP ETF)",
+    }
+
+    lines = []
+    for symbol, label in symbols.items():
+        try:
+            r = requests.get(
+                f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}",
+                timeout=5
+            )
+            if r.ok:
+                d = r.json()
+                price = d.get("c", 0)
+                pct = d.get("dp", 0)
+                prev = d.get("pc", 0)
+                if price > 0:
+                    direction = "+" if pct >= 0 else ""
+                    lines.append(f"  {label}: ${price:.2f} ({direction}{pct:.2f}%), prev close: ${prev:.2f}")
+                    print(f"  Finnhub {symbol}: ${price:.2f} ({direction}{pct:.2f}%)")
+        except Exception as e:
+            print(f"  Finnhub error for {symbol}: {e}")
+
+    if not lines:
+        return ""
+
+    return "\n".join([
+        "\n══ VERIFIED MARKET DATA (from Finnhub API — these are FACTS, do NOT override with guesses) ══",
+        *lines,
+        "",
+        "CONVERSION GUIDE (ETF price → actual value):",
+        "  S&P 500 index ≈ SPY × 10 | Nasdaq 100 index ≈ QQQ × 80 | Dow index ≈ DIA × 100",
+        "  Gold $/oz ≈ GLD × 24 | Bitcoin ≈ IBIT × 550",
+        "  For exact index levels, oil prices ($/barrel), and VIX level: use Google Search.",
+        "  The % changes above are ACCURATE — use them for direction and magnitude.",
+        "  If ANY number you write contradicts the data above, you are WRONG. Fix it.",
+        "══════════════════════════════════════════════════════════════════════════════════════════\n"
+    ])
 
 def load_holidays():
     """Load US holidays from data.json"""
@@ -109,17 +171,20 @@ SHARED_RULES = """Rules:
 - Output pure JSON only, no backticks, no explanations.
 
 CRITICAL — KEY MARKET DATA (MANDATORY VERIFICATION):
-- You MUST always include exact data for S&P 500, Nasdaq, and Dow Jones with % change and point levels.
+- If VERIFIED MARKET DATA from Finnhub API is provided above the tweets, you MUST use those numbers for index performance (% change). Do NOT override them with numbers from tweets or from memory.
+- Use the verified % changes as-is. For exact index point levels, use Google Search to convert ETF prices to index levels (S&P 500 ≈ SPY × 10, Nasdaq 100 ≈ QQQ × ~80, Dow ≈ DIA × ~100).
 - You MUST verify via Google Search the current prices of: Brent crude oil, WTI crude oil, gold, and any other commodity you mention.
-- If a tweet states a price that seems extreme or unusual (e.g. Brent at $141 when it was recently at $110), you MUST verify it via Google Search before including it.
-- NEVER trust a single tweet for major price data. Always cross-reference with Google Search.
+- If a tweet states a price that seems extreme or unusual, you MUST verify it via Google Search before including it.
+- NEVER trust a single tweet for major price data. Always cross-reference.
 - NEVER write vague descriptions like "the market closed in green territory" or "mixed trading" without exact numbers.
 
 CRITICAL — DATA ACCURACY:
+- EVERY number in the review must come from one of these sources: (1) Finnhub verified data above, (2) a specific tweet, or (3) Google Search verification.
+- NEVER invent, estimate, or recall prices from memory. If you cannot point to a source, do NOT include the number.
 - For stock-specific data ($TICKER moves, earnings, upgrades): use numbers from the tweets.
-- NEVER invent, estimate, or recall prices from memory.
 - If the tweets mention a percentage move but no absolute price, report only the percentage — do NOT guess the price.
-- Double-check every number you write. If a price seems unusually high or low compared to recent levels, verify it via Google Search before including it. Getting a number wrong destroys credibility.
+- If a number from a tweet contradicts the Finnhub verified data, the Finnhub data is correct — the tweet is wrong.
+- Getting a number wrong destroys credibility. When in doubt, omit.
 
 CRITICAL — CONSISTENCY:
 - The "שורה תחתונה" paragraph MUST be consistent with the bullet points above it. If the bullets show the market rose sharply, do NOT call it "mixed trading" in the summary.
@@ -133,11 +198,12 @@ CRITICAL — FINANCIAL TERMINOLOGY:
 - Futures = חוזים עתידיים, Options = אופציות, Bonds = אגרות חוב.
 - If unsure about the correct Hebrew term, use the English term with Hebrew explanation in parentheses."""
 
-def get_prompt(tweets, review_type, date_str, day_name, title_date_str=None, title_day_name=None, week_range=None, is_trading=True):
+def get_prompt(tweets, review_type, date_str, day_name, title_date_str=None, title_day_name=None, week_range=None, is_trading=True, market_data=""):
     """
     date_str / day_name = when the script runs (today)
     title_date_str / title_day_name = the trading day the title should reference
     week_range = e.g. "24/03–28/03/2026" for weekly reviews
+    market_data = verified data from Finnhub API
     """
     if not title_date_str:
         title_date_str = date_str
@@ -145,6 +211,8 @@ def get_prompt(tweets, review_type, date_str, day_name, title_date_str=None, tit
         title_day_name = day_name
 
     tweets_block = f"Source tweets/posts from X (Twitter) — date: {date_str}:\n{tweets}"
+    if market_data:
+        tweets_block = market_data + "\n" + tweets_block
 
     if review_type == "daily_prep":
         is_same_day = (date_str == title_date_str)
@@ -457,11 +525,15 @@ def main():
 
     print(f"Fetched {len(tweets.split(chr(10)+chr(10)))} tweet blocks")
 
+    # Fetch verified market data from Finnhub
+    market_data = fetch_market_data()
+
     prompt = get_prompt(tweets, REVIEW_TYPE, date_str, day_name,
                         title_date_str=title_date_str,
                         title_day_name=title_day_name,
                         week_range=week_range,
-                        is_trading=target_is_trading if REVIEW_TYPE == "daily_prep" else today_is_trading)
+                        is_trading=target_is_trading if REVIEW_TYPE == "daily_prep" else today_is_trading,
+                        market_data=market_data)
     if not prompt:
         print(f"Unknown review type: {REVIEW_TYPE}")
         return
