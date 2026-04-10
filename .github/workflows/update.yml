@@ -14,6 +14,7 @@ on:
           - weekly_prep
           - weekly_summary
           - events
+          - live_news
 
 jobs:
   update:
