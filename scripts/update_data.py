@@ -196,7 +196,59 @@ CRITICAL — FINANCIAL TERMINOLOGY:
 - A private company planning an IPO is issuing shares — it does NOT have an ETF.
 - SPO = הנפקה משנית, SPAC = חברת רכש ייעודית, M&A = מיזוג ורכישה.
 - Futures = חוזים עתידיים, Options = אופציות, Bonds = אגרות חוב.
-- If unsure about the correct Hebrew term, use the English term with Hebrew explanation in parentheses."""
+- If unsure about the correct Hebrew term, use the English term with Hebrew explanation in parentheses.
+
+CRITICAL — US-ISRAEL TIME CONVERSION:
+- US market opens at 9:30 AM ET, closes at 4:00 PM ET.
+- To convert US Eastern Time to Israel time, use the offset provided below.
+- NEVER guess the time offset — use ONLY the value calculated for today."""
+
+def get_us_israel_offset(now):
+    """Calculate the current US Eastern → Israel time offset in hours.
+    Handles DST transitions for both US and Israel."""
+    import calendar
+
+    year = now.year
+
+    # US DST: 2nd Sunday of March → 1st Sunday of November
+    mar1 = datetime(year, 3, 1)
+    us_dst_start = mar1 + timedelta(days=(6 - mar1.weekday()) % 7 + 7)  # 2nd Sunday
+    nov1 = datetime(year, 11, 1)
+    us_dst_end = nov1 + timedelta(days=(6 - nov1.weekday()) % 7)  # 1st Sunday
+
+    # Israel DST: last Friday before April 2 → last Sunday of October
+    apr2 = datetime(year, 4, 2)
+    il_dst_start = apr2 - timedelta(days=(apr2.weekday() + 3) % 7)  # last Friday before Apr 2
+    oct31 = datetime(year, 10, 31)
+    il_dst_end = oct31 - timedelta(days=(oct31.weekday() + 1) % 7)  # last Sunday of October
+
+    today = now.replace(tzinfo=None)
+    us_is_dst = us_dst_start <= today.replace(hour=0, minute=0, second=0) < us_dst_end
+    il_is_dst = il_dst_start <= today.replace(hour=0, minute=0, second=0) < il_dst_end
+
+    us_offset = -4 if us_is_dst else -5  # EDT or EST
+    il_offset = 3 if il_is_dst else 2    # IDT or IST
+
+    return il_offset - us_offset  # hours to add to ET to get Israel time
+
+def get_time_conversion_block(now):
+    """Generate the time conversion info for the prompt."""
+    offset = get_us_israel_offset(now)
+
+    def convert(hour, minute):
+        ih = hour + offset
+        return f"{ih}:{minute:02d}"
+
+    return f"""
+US-ISRAEL TIME OFFSET TODAY: +{offset} hours (add {offset} hours to US Eastern Time)
+Key times in Israel time today:
+- US economic data releases (CPI, NFP, PPI, GDP, Jobless Claims): {convert(8,30)} שעון ישראל
+- ISM PMI, JOLTS, Consumer Confidence: {convert(10,0)} שעון ישראל
+- FOMC rate decision / FOMC minutes: {convert(14,0)} שעון ישראל
+- Fed Chair press conference: {convert(14,30)} שעון ישראל
+- US market open: {convert(9,30)} שעון ישראל
+- US market close: {convert(16,0)} שעון ישראל
+USE ONLY THESE TIMES. Do NOT calculate your own offset."""
 
 def get_prompt(tweets, review_type, date_str, day_name, title_date_str=None, title_day_name=None, week_range=None, is_trading=True, market_data=""):
     """
@@ -213,6 +265,11 @@ def get_prompt(tweets, review_type, date_str, day_name, title_date_str=None, tit
     tweets_block = f"Source tweets/posts from X (Twitter) — date: {date_str}:\n{tweets}"
     if market_data:
         tweets_block = market_data + "\n" + tweets_block
+
+    # Add time conversion info
+    from datetime import datetime as dt_class
+    time_block = get_time_conversion_block(dt_class.now(ISR_TZ))
+    tweets_block = time_block + "\n" + tweets_block
 
     if review_type == "daily_prep":
         is_same_day = (date_str == title_date_str)
