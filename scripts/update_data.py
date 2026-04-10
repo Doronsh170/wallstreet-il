@@ -177,6 +177,12 @@ CRITICAL — KEY MARKET DATA (MANDATORY VERIFICATION):
 - If a tweet states a price that seems extreme or unusual, you MUST verify it via Google Search before including it.
 - NEVER trust a single tweet for major price data. Always cross-reference.
 - NEVER write vague descriptions like "the market closed in green territory" or "mixed trading" without exact numbers.
+- NEVER claim an index or stock is at an "all-time high" (שיא / שיא כל הזמנים) unless you verify it via Google Search. A positive day does NOT automatically mean a record.
+
+CRITICAL — MAJOR ECONOMIC DATA (DO NOT MISS):
+- Use Google Search to check if any major US economic data was released today: CPI, PPI, NFP, GDP, Jobless Claims, ISM PMI, Consumer Confidence, Retail Sales, FOMC minutes/decision.
+- If major data WAS released today, it MUST appear in the review — even if no tweet mentions it. This is non-negotiable.
+- CPI and NFP are the two most important data releases. Missing them from a daily review is a critical failure.
 
 CRITICAL — DATA ACCURACY:
 - EVERY number in the review must come from one of these sources: (1) Finnhub verified data above, (2) a specific tweet, or (3) Google Search verification.
@@ -433,6 +439,27 @@ Output JSON format — THIS IS DIFFERENT FROM OTHER REVIEWS:
 
 Event types to include: macro data (NFP, CPI, PPI, PMI, GDP, jobless claims), Fed rate decisions and Fed speaker appearances, major earnings reports (mega-cap and market-moving companies), options/futures expiry dates, Treasury auctions, geopolitical deadlines or summits."""
 
+    elif review_type == "live_news":
+        return f"""You are a Wall Street news desk editor delivering a real-time market snapshot in Hebrew.
+
+Your task: Based on the tweets/posts below, write a rapid-fire summary of what is happening RIGHT NOW in the markets. This is a "מה קורה עכשיו" update — not a daily summary, not a preview. Just the most important things happening at this moment.
+
+{SHARED_RULES}
+
+CRITICAL — OUTPUT FORMAT:
+- Output exactly 2 JSON sections: one with the news bullets, one with the bottom line.
+- The first section's "content" field MUST be a flat list of bullet points. Every bullet starts with "* " (asterisk + space).
+- Each bullet: "* Sub-heading: one concise fact." Plain text, no formatting tags.
+- Include 6-10 bullets, ordered by importance and recency.
+- Cover: current index levels/moves, breaking news, geopolitical developments, notable stock moves, commodity prices, anything market-moving happening RIGHT NOW.
+- Be concise — this is a quick snapshot, not a deep analysis.
+- The second section is "שורה תחתונה" — 2-3 sentences MAX. What is the dominant story right now and what should investors watch in the next few hours.
+
+{tweets_block}
+
+Output JSON format:
+{{"title":"מה קורה עכשיו בוול סטריט 🇺🇸 – {day_name} {date_str}, {datetime.now(ISR_TZ).strftime('%H:%M')}","date":"{date_str}","sections":[{{"heading":"חדשות אחרונות","content":"* sub-heading: fact\\n* sub-heading: fact..."}},{{"heading":"שורה תחתונה","content":"paragraph"}}]}}"""
+
     return ""
 
 # ══════════════════════════════════════════════════════════════
@@ -606,7 +633,8 @@ def main():
         "daily_prep": "dailyPrep",
         "daily_summary": "dailySummary",
         "weekly_prep": "weeklyPrep",
-        "weekly_summary": "weeklySummary"
+        "weekly_summary": "weeklySummary",
+        "live_news": "liveNews"
     }
 
     if REVIEW_TYPE == "events":
