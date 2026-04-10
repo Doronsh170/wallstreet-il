@@ -1,19 +1,6 @@
 name: Update Wall Street IL
 
 on:
-  schedule:
-    # הכנה יומית: 10:30 UTC = 13:30 Israel (שעון קיץ)
-    - cron: '30 10 * * 1-5'
-    - cron: '45 10 * * 1-5'
-    # סיכום יומי: 20:30 UTC = 23:30 Israel
-    - cron: '30 20 * * 1-5'
-    - cron: '45 20 * * 1-5'
-    # הכנה שבועית: יום ראשון 10:00 UTC = 13:00 Israel
-    - cron: '0 10 * * 0'
-    - cron: '15 10 * * 0'
-    # סיכום שבועי: יום שישי 22:00 UTC = 01:00 שבת Israel
-    - cron: '0 22 * * 5'
-    - cron: '15 22 * * 5'
   workflow_dispatch:
     inputs:
       review_type:
