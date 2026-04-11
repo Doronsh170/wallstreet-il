@@ -239,6 +239,7 @@ SHARED_RULES = """Rules:
 - Write ONLY in Hebrew. Use English only for tickers ($AAPL), index names (S&P 500), and well-known financial terms in parentheses on first use only.
 - Be specific: every claim must include a number, percentage, or ticker. Never write vague statements like "the market had an interesting week".
 - Do NOT repeat the same information across sections. Each section must contain NEW content.
+- Do NOT mention the same ticker or company in multiple separate bullets. If a company has multiple news items, combine them into ONE bullet. For example, if $SNDK is joining Nasdaq 100 AND got a price target upgrade, put both facts in one bullet about $SNDK.
 - No buy/sell recommendations.
 - Start each section directly with the key fact. No generic opening sentences.
 - Output pure JSON only, no backticks, no explanations.
@@ -256,6 +257,7 @@ CRITICAL — MAJOR ECONOMIC DATA (DO NOT MISS):
 - Use Google Search to check if any major US economic data was released today: CPI, PPI, NFP, GDP, Jobless Claims, ISM PMI, Consumer Confidence, Retail Sales, FOMC minutes/decision.
 - If major data WAS released today, it MUST appear in the review — even if no tweet mentions it. This is non-negotiable.
 - CPI and NFP are the two most important data releases. Missing them from a daily review is a critical failure.
+- When mentioning economic data, ALWAYS include the actual numbers: percentage change, absolute value, and comparison to forecast. For example: "מדד המחירים לצרכן (CPI) עלה ב-0.9% על בסיס חודשי וב-3.3% על בסיס שנתי" — NOT just "מדד המחירים הצביע על עלייה חדה". Vague descriptions without numbers are unacceptable.
 
 CRITICAL — DATA ACCURACY:
 - EVERY number in the review must come from one of these sources: (1) Finnhub verified data above, (2) a specific tweet, or (3) Google Search verification.
