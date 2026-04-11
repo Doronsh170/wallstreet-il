@@ -215,6 +215,50 @@ def fetch_economic_data(days_back=1, days_forward=0):
         print(f"  Finnhub economic calendar error: {e}")
         return ""
 
+def get_macro_checklist(review_type, date_str, week_range=None):
+    """Generate a mandatory checklist of macro data Gemini must search for."""
+    if review_type == "daily_summary":
+        return f"""
+══ MANDATORY MACRO DATA CHECK ══
+You MUST use Google Search to find if ANY of these were released on {date_str}:
+- CPI (headline AND Core CPI separately)
+- PPI (headline AND Core PPI separately)
+- NFP (Non-Farm Payrolls)
+- Jobless Claims (initial + continuing)
+- Consumer Sentiment (Michigan)
+- ISM PMI (Manufacturing or Services)
+- GDP
+- Retail Sales
+- FOMC decision or minutes
+If ANY of these were released today, include them with: actual number, forecast, previous, AND what it means for markets/Fed.
+If NONE were released today, skip this section — but you MUST check first.
+══════════════════════════════════\n"""
+    elif review_type == "weekly_summary":
+        return f"""
+══ MANDATORY MACRO DATA CHECK ══
+You MUST use Google Search to find ALL major US economic data released during the week of {week_range if week_range else date_str}.
+Specifically search for EACH of these:
+1. CPI — was it released this week? If yes: headline monthly %, headline annual %, Core CPI monthly %, Core CPI annual %, vs forecast. BOTH headline and core are mandatory.
+2. PPI — was it released this week? If yes: headline and core, monthly and annual, vs forecast.
+3. NFP / Employment — was it released this week? If yes: jobs added, unemployment rate, vs consensus, revisions.
+4. Jobless Claims — weekly initial claims number, vs forecast, continuing claims.
+5. Consumer Sentiment (Michigan) — was it released this week? If yes: actual vs forecast vs previous, inflation expectations.
+6. ISM PMI — was it released this week? If yes: manufacturing or services, actual vs forecast.
+7. FOMC — was there a decision or minutes released this week?
+8. Any other major data release (GDP, Retail Sales, etc.)
+
+For EVERY data point found: include actual number, forecast, previous period, AND explain the market implication.
+Do NOT write 'data is expected' if it was already released — check the date.
+Do NOT skip Core CPI if headline CPI was released — they are equally important.
+══════════════════════════════════\n"""
+    elif review_type == "daily_prep":
+        return f"""
+══ SCHEDULED DATA CHECK ══
+Use Google Search to find what US economic data is scheduled for release on {date_str}.
+Include the release time in Israel time and what the market consensus/forecast is.
+══════════════════════════════════\n"""
+    return ""
+
 def load_holidays():
     """Load US holidays from data.json"""
     try:
@@ -792,6 +836,11 @@ def main():
     # Combine market data and economic data
     if econ_data:
         market_data = market_data + "\n" + econ_data if market_data else econ_data
+
+    # Add mandatory macro data checklist
+    macro_checklist = get_macro_checklist(REVIEW_TYPE, date_str, week_range)
+    if macro_checklist:
+        market_data = market_data + "\n" + macro_checklist if market_data else macro_checklist
 
     prompt = get_prompt(tweets, REVIEW_TYPE, date_str, day_name,
                         title_date_str=title_date_str,
