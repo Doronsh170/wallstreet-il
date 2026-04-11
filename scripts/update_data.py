@@ -145,6 +145,76 @@ def fetch_market_data(weekly=False):
 
     return "\n".join(result_lines)
 
+def fetch_economic_data(days_back=1, days_forward=0):
+    """Fetch US economic calendar from Finnhub API.
+    For daily reviews: days_back=1, days_forward=0 (today's data)
+    For weekly reviews: days_back=7, days_forward=0 (full week)"""
+    if not FINNHUB_API_KEY:
+        return ""
+
+    now = datetime.now(ISR_TZ)
+    from_date = (now - timedelta(days=days_back)).strftime("%Y-%m-%d")
+    to_date = (now + timedelta(days=days_forward)).strftime("%Y-%m-%d")
+
+    try:
+        r = requests.get(
+            f"https://finnhub.io/api/v1/calendar/economic?from={from_date}&to={to_date}&token={FINNHUB_API_KEY}",
+            timeout=10
+        )
+        if not r.ok:
+            print(f"  Finnhub economic calendar: status {r.status_code}")
+            return ""
+
+        data = r.json()
+        events = data.get("economicCalendar", [])
+
+        # Filter: US only, with actual values, medium/high impact
+        us_events = []
+        for e in events:
+            if e.get("country", "") != "US":
+                continue
+            actual = e.get("actual")
+            if actual is None:
+                continue
+            event_name = e.get("event", "")
+            estimate = e.get("estimate")
+            prev = e.get("prev")
+            unit = e.get("unit", "")
+            impact = e.get("impact", "")
+            date = e.get("time", "")[:10]
+
+            # Format the line
+            line = f"  {date} | {event_name}: actual={actual}{unit}"
+            if estimate is not None:
+                line += f", forecast={estimate}{unit}"
+            if prev is not None:
+                line += f", previous={prev}{unit}"
+            if impact:
+                line += f" [{impact} impact]"
+            us_events.append(line)
+            print(f"  Econ: {event_name} = {actual}{unit} (est: {estimate})")
+
+        if not us_events:
+            print("  No US economic events with actual values found")
+            return ""
+
+        return "\n".join([
+            "\n══ VERIFIED US ECONOMIC DATA (from Finnhub — these are FACTS, you MUST include them) ══",
+            *us_events,
+            "INSTRUCTIONS FOR USING THIS DATA:",
+            "- Every data point above MUST appear in the review — do NOT skip any.",
+            "- Do NOT list them as raw numbers. Weave them naturally into analytical bullets.",
+            "- Good example: 'נתוני אינפלציה: מדד המחירים לצרכן (CPI) לחודש מרץ עלה ב-0.9% על בסיס חודשי, מעל הצפי של 0.8%, בעיקר עקב מחירי האנרגיה. מדד הליבה (Core CPI) עלה ב-0.2% בלבד, נמוך מהצפי של 0.3%, מה שמרמז כי ללא אפקט האנרגיה לחצי האינפלציה מתונים יותר.'",
+            "- Bad example: 'CPI: actual=0.9%, forecast=0.8%' — this is raw data, not analysis.",
+            "- Always explain WHY the number matters: what it means for Fed policy, markets, or investors.",
+            "- Do NOT say data 'is expected' or 'will be released' if it already has an actual value above — it was ALREADY released.",
+            "══════════════════════════════════════════════════════════════════════════════════════════\n"
+        ])
+
+    except Exception as e:
+        print(f"  Finnhub economic calendar error: {e}")
+        return ""
+
 def load_holidays():
     """Load US holidays from data.json"""
     try:
@@ -706,6 +776,22 @@ def main():
     # Fetch verified market data from Finnhub
     is_weekly = REVIEW_TYPE in ("weekly_summary", "weekly_prep")
     market_data = fetch_market_data(weekly=is_weekly)
+
+    # Fetch economic calendar data from Finnhub
+    if REVIEW_TYPE == "daily_summary":
+        econ_data = fetch_economic_data(days_back=1, days_forward=0)
+    elif REVIEW_TYPE in ("weekly_summary", "weekly_prep"):
+        econ_data = fetch_economic_data(days_back=7, days_forward=0)
+    elif REVIEW_TYPE == "daily_prep":
+        econ_data = fetch_economic_data(days_back=1, days_forward=1)
+    elif REVIEW_TYPE == "live_news":
+        econ_data = fetch_economic_data(days_back=1, days_forward=0)
+    else:
+        econ_data = ""
+
+    # Combine market data and economic data
+    if econ_data:
+        market_data = market_data + "\n" + econ_data if market_data else econ_data
 
     prompt = get_prompt(tweets, REVIEW_TYPE, date_str, day_name,
                         title_date_str=title_date_str,
