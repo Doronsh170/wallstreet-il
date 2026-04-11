@@ -257,7 +257,8 @@ CRITICAL — MAJOR ECONOMIC DATA (DO NOT MISS):
 - Use Google Search to check if any major US economic data was released today: CPI, PPI, NFP, GDP, Jobless Claims, ISM PMI, Consumer Confidence, Retail Sales, FOMC minutes/decision.
 - If major data WAS released today, it MUST appear in the review — even if no tweet mentions it. This is non-negotiable.
 - CPI and NFP are the two most important data releases. Missing them from a daily review is a critical failure.
-- When mentioning economic data, ALWAYS include the actual numbers: percentage change, absolute value, and comparison to forecast. For example: "מדד המחירים לצרכן (CPI) עלה ב-0.9% על בסיס חודשי וב-3.3% על בסיס שנתי" — NOT just "מדד המחירים הצביע על עלייה חדה". Vague descriptions without numbers are unacceptable.
+- When CPI is mentioned, ALWAYS report BOTH headline CPI AND Core CPI (excluding food and energy). These often tell different stories — headline can be high due to energy while core is tame. Both numbers are critical for understanding Fed policy direction.
+- When mentioning economic data, ALWAYS include the actual numbers: percentage change (monthly AND annual), comparison to forecast, and comparison to previous period. For example: "מדד המחירים לצרכן (CPI) עלה ב-0.9% על בסיס חודשי וב-3.3% על בסיס שנתי, מעל הצפי של 3.4%. מדד הליבה (Core CPI) עלה ב-0.2% בלבד, נמוך מהצפי" — NOT just "מדד המחירים הצביע על עלייה חדה". Vague descriptions without numbers are unacceptable.
 
 CRITICAL — DATA ACCURACY:
 - EVERY number in the review must come from one of these sources: (1) Finnhub verified data above, (2) a specific tweet, or (3) Google Search verification.
