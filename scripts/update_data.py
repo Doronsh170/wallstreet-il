@@ -464,9 +464,9 @@ Output JSON format:
 {{"title":"הכנה לשבוע מסחר בוול סטריט 🇺🇸 – {week_range if week_range else date_str}","date":"{date_str}","sections":[{{"heading":"נקודות מרכזיות לשבוע הקרוב","content":"* sub-heading: fact\\n* sub-heading: fact..."}},{{"heading":"שורה תחתונה","content":"paragraph"}}]}}"""
 
     elif review_type == "weekly_summary":
-        return f"""You are a senior Wall Street strategist writing a weekly review for Israeli investors in Hebrew.
+        return f"""You are a senior Wall Street strategist writing a comprehensive weekly review for Israeli investors in Hebrew. Your goal is to highlight critical information for investors — not just what happened, but WHY it matters and WHAT it means for positioning.
 
-Your task: Summarize in bullet points the key events from the trading week of {week_range if week_range else date_str} on Wall Street, based on the tweets/posts below. Write a flat list — each bullet has a short sub-heading followed by a colon, then the detail. Write in PAST TENSE.
+Your task: Provide a detailed summary of all significant developments on Wall Street over the trading week of {week_range if week_range else date_str}. For each development, explain its market significance and investor implications. Write in PAST TENSE.
 
 CRITICAL — TIME FRAME:
 - This summary covers the trading week {week_range if week_range else date_str} ONLY.
@@ -481,19 +481,32 @@ CRITICAL — WEEKLY PERFORMANCE:
 
 {SHARED_RULES}
 
+CRITICAL — ANALYTICAL DEPTH:
+- For EVERY macro data point (CPI, NFP, GDP, PMI, etc.), include: the actual number, the forecast/consensus, the comparison to previous period, AND what it means for Fed policy and markets.
+- For index performance: include weekly % change, mention if it's the best/worst week in X months, and note which sectors led and which lagged.
+- For geopolitical events: explain the market mechanism — HOW did the event move prices (oil → inflation expectations → rate expectations → equity valuations).
+- For earnings: note the broader trend — what does it signal about the sector/economy, not just the individual company.
+- Always connect the dots: don't just list facts, explain the cause-and-effect chain.
+
 CRITICAL — OUTPUT FORMAT:
 - Output exactly 2 JSON sections: one with all the bullets, one with the bottom line.
 - The first section's "content" field MUST be a flat list of bullet points. Every bullet starts with "* " (asterisk + space).
 - Each bullet format: "* Sub-heading: detail text." — the sub-heading is a short topic label (2-4 words), NOT bold, NOT wrapped in tags.
 - Do NOT use <b> tags, ■ markers, 📍 emojis, or any special formatting. Plain text only.
 - Include 8-14 bullets, in this order:
-  1. START with index performance: S&P 500, Nasdaq, Dow — weekly % changes, notable milestones (highs, correction territory).
-  2. Then macro data published this week: employment, inflation, PMI, GDP, consumer sentiment — actual numbers and market reaction.
-  3. Then key events that moved markets: geopolitics, Fed comments, trade/tariff news, commodity moves (oil, gold with numbers).
-  4. Then notable earnings reports: company ($TICKER), stock move %, key result.
-  5. End with sector rotation or institutional activity if relevant.
+  1. START with index performance: S&P 500, Nasdaq, Dow, Russell 2000 — weekly % changes, context (best week since X), leading/lagging sectors, total market cap change if notable.
+  2. Then macro data published this week with FULL numbers: CPI (headline AND core, monthly AND annual, vs forecast), NFP (actual vs consensus, revisions), jobless claims, consumer sentiment — actual numbers, forecasts, AND market reaction.
+  3. Then key events that moved markets: geopolitics, Fed comments, trade/tariff news — explain the transmission mechanism to prices.
+  4. Then commodities with context: oil (weekly change + why), gold, Bitcoin.
+  5. Then notable company news, earnings, M&A — combine related items.
+  6. End with earnings season outlook or institutional positioning if relevant.
 - Do NOT repeat information across bullets. Each bullet = one unique fact.
-- The second section is "שורה תחתונה" — a paragraph of 4-5 sentences (NOT bullets). Start with the key narrative shift from this week. Then analyze: how did investor positioning change, what does the weekly price action imply about the medium-term trend, and what are the 2-3 most important things to watch next week and why they matter. Give strategic perspective, not just a data recap.
+- The second section is "שורה תחתונה" — a paragraph of 5-6 sentences. Structure:
+  1. The dominant narrative of the week and what drove it.
+  2. What shifted in investor positioning (risk-on/off, sector rotation, rate expectations).
+  3. The key tension or contradiction in the market (e.g. strong jobs vs high inflation).
+  4. What are the 2-3 specific risks that could reverse the trend.
+  5. What to watch next week and why it matters for the medium-term outlook.
 
 {tweets_block}
 
