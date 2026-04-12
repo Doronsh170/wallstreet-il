@@ -571,7 +571,7 @@ CRITICAL — TIME FRAME:
 - This preview covers the trading week {week_range if week_range else date_str} ONLY.
 - Include ONLY events, data releases, and catalysts scheduled for THIS specific week.
 - Do NOT include events from previous weeks or events beyond this week's Friday.
-- When referencing "last week" for context, refer to the trading week BEFORE {week_range if week_range else date_str}.
+- Do NOT include last week's index performance or closing levels — there is a separate "סיכום שבועי" for that.
 
 {SHARED_RULES}
 
@@ -580,12 +580,12 @@ CRITICAL — OUTPUT FORMAT:
 - The first section's "content" field MUST be a flat list of bullet points. Every bullet starts with "* " (asterisk + space).
 - Each bullet format: "* Sub-heading: detail text." — the sub-heading is a short topic label (2-4 words), NOT bold, NOT wrapped in tags.
 - Do NOT use <b> tags, ■ markers, 📍 emojis, or any special formatting. Plain text only.
-- Include 8-14 bullets, in this order:
-  1. START with 1-2 bullets summarizing how last week ended (index performance with %, dominant theme) — this gives context.
-  2. Then the key events coming THIS week: Fed decisions, economic data (NFP, CPI, PMI, GDP), earnings reports, trade/tariff deadlines, geopolitical developments.
-  3. For each event: include the specific day and Israel time when known (e.g. "יום רביעי 21:00 שעון ישראל").
-  4. End with notable companies expected to report earnings this week.
-- Do NOT repeat information across bullets. Each bullet = one unique fact.
+- Include 8-14 bullets, ALL forward-looking:
+  1. Key events coming THIS week: Fed decisions, economic data (NFP, CPI, PMI, GDP, PPI), earnings reports, trade/tariff deadlines, geopolitical developments.
+  2. For each event: include the specific day and Israel time when known (e.g. "יום רביעי 21:00 שעון ישראל").
+  3. Geopolitical risks and what to watch for.
+  4. Notable companies expected to report earnings this week.
+- Do NOT include any bullets about last week's performance. Zero backward-looking data.
 - The second section is "שורה תחתונה" — a paragraph of 4-5 sentences (NOT bullets). Start with the ONE dominant theme for the week. Then analyze: what is the market currently pricing in, what could surprise to the upside or downside, and what combination of events could trigger a significant move. End with a clear framework — what scenario is bullish and what is bearish.
 
 {tweets_block}
