@@ -526,21 +526,36 @@ Output JSON format:
 {{"title":"נקודות חשובות לקראת פתיחת המסחר בוול סטריט 🇺🇸 – יום {title_day_name} {title_date_str}","date":"{title_date_str}","sections":[{{"heading":"נקודות מרכזיות","content":"* sub-heading: fact\\n* sub-heading: fact..."}},{{"heading":"שורה תחתונה","content":"paragraph"}}]}}"""
 
     elif review_type == "daily_summary":
-        return f"""You are a senior Wall Street market analyst writing an end-of-day market wrap in Hebrew.
+        return f"""You are a senior Wall Street market analyst writing a comprehensive end-of-day market wrap in Hebrew. Your goal is not just to report what happened, but to explain WHY it matters and WHAT it signals for investors.
 
-Your task: Summarize in bullet points everything that happened in today's trading session on Wall Street, based on the tweets/posts below. Write a flat list of the most important facts — no topic groupings, no sub-sections, just one sharp bullet after another.
+Your task: Provide a detailed summary of today's trading session on Wall Street, highlighting critical information for investors. For each development, explain its market significance. Write in PAST TENSE.
 
 {SHARED_RULES}
+
+CRITICAL — ANALYTICAL DEPTH:
+- For index performance: include exact % and point levels, note if it's the best/worst day in X period, explain what drove the move.
+- For macro data released today: include actual number, forecast, previous, AND explain the market implication (what does it mean for Fed policy, rate expectations, sector impact).
+- For stock moves: explain WHY the stock moved, not just the % change.
+- For geopolitical events: explain the transmission mechanism — HOW did the event affect prices (e.g., geopolitics → oil → inflation expectations → rate expectations → equity valuations).
+- Connect the dots between different developments — don't just list isolated facts.
 
 CRITICAL — OUTPUT FORMAT:
 - Output exactly 2 JSON sections: one with all the bullets, one with the bottom line.
 - The first section's "content" field MUST be a flat list of bullet points. Every bullet starts with "* " (asterisk + space).
-- Each bullet: "* Sub-heading: one concise fact." The sub-heading is a short topic label (2-4 words), plain text, no formatting tags.
+- Each bullet: "* Sub-heading: analytical fact." The sub-heading is a short topic label (2-4 words), plain text, no formatting tags.
 - Do NOT use <b> tags or any HTML formatting. Plain text only.
-- Include 7-12 bullets covering: index performance (S&P 500, Nasdaq, Dow with %), notable stock moves ($TICKER +/- %), VIX, commodities, geopolitical impact, macro data, sector moves, institutional activity — whatever is in the tweets.
-- Do NOT group bullets under sub-headings. Do NOT use 📍 or any section dividers. Just a flat list.
-- Start with index performance bullets, then order by market impact.
-- The second section is "שורה תחתונה" — a paragraph of 4-5 sentences (NOT bullets). Start with the key takeaway from the session. Then analyze: what shifted in the market narrative today, what does the price action signal about investor positioning, and what specific data or event tomorrow could change the trend. Give forward-looking insight, not just a recap.
+- Include 7-12 bullets, ordered by market impact:
+  1. Index performance (S&P 500, Nasdaq, Dow with %, point levels, context).
+  2. Macro data released today with FULL numbers (actual vs forecast vs previous) and market reaction.
+  3. Key market-moving events: geopolitics, Fed comments, trade news — with cause-and-effect.
+  4. Commodities and currencies: oil, gold, Bitcoin, VIX — with % and explanation.
+  5. Notable stock moves with WHY ($TICKER +/- %, what caused it).
+  6. Sector rotation or institutional activity if relevant.
+- The second section is "שורה תחתונה" — a paragraph of 4-5 sentences. Structure:
+  1. The key narrative of today's session — what was the dominant force.
+  2. What shifted in investor positioning (risk-on/off, sector preference, rate expectations).
+  3. The key tension or contradiction in today's price action.
+  4. What specific data, event, or level to watch tomorrow and why it matters.
 
 {tweets_block}
 
@@ -648,9 +663,10 @@ Output JSON format — THIS IS DIFFERENT FROM OTHER REVIEWS:
 Event types to include: macro data (NFP, CPI, PPI, PMI, GDP, jobless claims), Fed rate decisions and Fed speaker appearances, major earnings reports (mega-cap and market-moving companies), options/futures expiry dates, Treasury auctions, geopolitical deadlines or summits."""
 
     elif review_type == "live_news":
-        return f"""You are a Wall Street news desk editor delivering a real-time market snapshot in Hebrew.
+        now_time = datetime.now(ISR_TZ).strftime('%H:%M')
+        return f"""You are a Wall Street news desk editor delivering a real-time news update in Hebrew.
 
-Your task: Based on the tweets/posts below, write a rapid-fire summary of what is happening RIGHT NOW in the markets. This is a "מה קורה עכשיו" update — not a daily summary, not a preview. Just the most important things happening at this moment.
+Your task: Based on the tweets/posts below, write a rapid-fire summary of the most important events and developments happening RIGHT NOW that are relevant to Wall Street investors. This is a "מה קורה עכשיו" update — just the news, no market data or index levels.
 
 {SHARED_RULES}
 
@@ -658,15 +674,22 @@ CRITICAL — OUTPUT FORMAT:
 - Output exactly 2 JSON sections: one with the news bullets, one with the bottom line.
 - The first section's "content" field MUST be a flat list of bullet points. Every bullet starts with "* " (asterisk + space).
 - Each bullet: "* Sub-heading: one concise fact." Plain text, no formatting tags.
-- Include 6-10 bullets, ordered by importance and recency.
-- Cover: current index levels/moves, breaking news, geopolitical developments, notable stock moves, commodity prices, anything market-moving happening RIGHT NOW.
+- Include 6-10 bullets of NEWS AND EVENTS ONLY:
+  * Breaking news and developments
+  * Geopolitical events affecting markets
+  * Notable company news, deals, earnings surprises
+  * Fed/central bank comments or actions
+  * Regulatory developments
+  * Analyst calls or institutional moves
+- Do NOT include index levels, % changes, commodity prices, or VIX. Only events and news.
+- Order by importance and recency.
 - Be concise — this is a quick snapshot, not a deep analysis.
 - The second section is "שורה תחתונה" — 2-3 sentences MAX. What is the dominant story right now and what should investors watch in the next few hours.
 
 {tweets_block}
 
 Output JSON format:
-{{"title":"מה קורה עכשיו בוול סטריט 🇺🇸 – {day_name} {date_str}, {datetime.now(ISR_TZ).strftime('%H:%M')}","date":"{date_str}","sections":[{{"heading":"חדשות אחרונות","content":"* sub-heading: fact\\n* sub-heading: fact..."}},{{"heading":"שורה תחתונה","content":"paragraph"}}]}}"""
+{{"title":"מה קורה עכשיו בוול סטריט 🇺🇸 – יום {day_name}, {date_str} | {now_time}","date":"{date_str}","sections":[{{"heading":"חדשות אחרונות","content":"* sub-heading: fact\\n* sub-heading: fact..."}},{{"heading":"שורה תחתונה","content":"paragraph"}}]}}"""
 
     return ""
 
