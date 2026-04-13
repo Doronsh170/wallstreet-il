@@ -394,6 +394,16 @@ CRITICAL — FINANCIAL TERMINOLOGY:
 - Futures = חוזים עתידיים, Options = אופציות, Bonds = אגרות חוב.
 - If unsure about the correct Hebrew term, use the English term with Hebrew explanation in parentheses.
 
+CRITICAL — FACTUAL ACCURACY (ATTRIBUTION):
+- NEVER attribute a product, model, or technology to the wrong company. This is a critical error that destroys credibility.
+- If a tweet mentions a product, use Google Search to verify WHO made it before writing.
+- Common mistakes to avoid:
+  * Claude / Claude Mythos is made by ANTHROPIC, not by Amazon/AWS. AWS only hosts it on Bedrock.
+  * ChatGPT / GPT models are made by OPENAI, not by Microsoft. Microsoft only invested in OpenAI.
+  * Gemini is made by GOOGLE, not by Alphabet directly.
+  * A product available ON a platform is NOT made BY that platform.
+- When in doubt about who made what, use Google Search to verify. Getting attribution wrong is as bad as getting a number wrong.
+
 CRITICAL — US-ISRAEL TIME CONVERSION:
 - US market opens at 9:30 AM ET, closes at 4:00 PM ET.
 - To convert US Eastern Time to Israel time, use the offset provided below.
