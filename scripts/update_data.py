@@ -495,16 +495,15 @@ DATES:
 
 CRITICAL — THIS IS A FORWARD-LOOKING BRIEFING, NOT A SUMMARY:
 - This is an "הכנה ליום מסחר" — what investors need to know BEFORE the market opens.
-- DO NOT summarize the last trading session. There is a separate "סיכום יומי" review for that.
-- The ONLY backward-looking data allowed is ONE bullet with index closing levels for context. Nothing more.
-- ALL other bullets must be FORWARD-LOOKING:
+- DO NOT include yesterday's index performance, closing levels, or any backward-looking data. ZERO. There is a separate "סיכום יומי" for that.
+- DO NOT repeat news or events that already appeared in yesterday's daily summary (סיכום יומי). If something was already covered there, skip it unless there is a NEW development about it.
+- ALL bullets must be FORWARD-LOOKING or about NEW overnight developments:
   * What economic data is scheduled for the target trading day (with Israel times)?
-  * What earnings reports are expected?
-  * What geopolitical risks or developments could move markets?
-  * What overnight news broke that will affect the open?
-  * What sectors or stocks have catalysts coming?
-  * What are analysts/strategists saying about today's expected moves?
-- Think of it as: "מה צפוי? מה הסיכונים? מה לעקוב אחריו?" — NOT "מה קרה?"
+  * What earnings reports are expected TODAY and what does the market expect?
+  * What NEW geopolitical developments broke overnight?
+  * What NEW company news, upgrades/downgrades, or analyst calls came out overnight?
+  * Pre-market/futures direction ONLY if the briefing is for today.
+- Think of it as: "מה חדש? מה צפוי? מה הסיכונים?" — NOT "מה קרה אתמול?"
 
 {SHARED_RULES}
 
@@ -513,17 +512,16 @@ CRITICAL — OUTPUT FORMAT:
 - The first section's "content" field MUST be a flat list of bullet points. Every bullet starts with "* " (asterisk + space).
 - Each bullet: "* Sub-heading: one concise fact." The sub-heading is a short topic label (2-4 words), plain text, no formatting tags.
 - Do NOT use <b> tags or any HTML formatting. Plain text only.
-- Include 7-12 bullets. Order:
+- Include 7-12 bullets. ALL forward-looking or overnight news:
   1. If the briefing is for a future date, first bullet states when trading resumes.
-  2. ONE bullet of context only: last session closing levels (S&P 500, Nasdaq, Dow with %). This is the ONLY backward-looking bullet allowed.
-  3. Then ALL remaining bullets must be forward-looking:
-     - Scheduled economic data for the target day (with Israel times)
-     - Expected earnings reports
-     - Geopolitical risks and overnight developments
-     - Commodity/currency moves that signal market direction
-     - Notable stock catalysts: upgrades, downgrades, news
-     - Pre-market/futures data ONLY if the briefing is for today
-  4. Do NOT include multiple bullets about what happened yesterday. One context bullet is enough.
+  2. Pre-market/futures sentiment ONLY if the briefing is for today.
+  3. Scheduled economic data for the target day (with Israel times and consensus forecast).
+  4. Expected earnings reports TODAY.
+  5. NEW overnight geopolitical developments.
+  6. NEW overnight company news, analyst upgrades/downgrades.
+  7. Commodity/currency moves that signal market direction.
+- Do NOT include ANY bullets about yesterday's closing levels or yesterday's performance.
+- Do NOT repeat information that was in yesterday's daily summary.
 - The second section is "שורה תחתונה" — a paragraph of 4-5 sentences (NOT bullets).
   - If the briefing is for a same-day trading session: Start with the dominant theme for today's session. What is the key risk, what scenario would change the picture, what level or event to watch.
   - If the briefing is prepared in advance (e.g. Sunday for Monday): Summarize key developments since the last session, what risks are building, and what to watch when trading resumes on the target day. Use "עם פתיחת המסחר ביום {title_day_name}" — NOT "היום".
