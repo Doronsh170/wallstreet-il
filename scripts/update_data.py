@@ -783,7 +783,12 @@ def call_gemini(prompt):
             return json.loads(text)
         except json.JSONDecodeError as e:
             print(f"  JSON parse error: {e}")
+            print(f"  Raw text (first 200 chars): {text[:200]}")
             print(f"  Raw text (last 300 chars): ...{text[-300:]}")
+            if attempt < max_retries - 1:
+                print(f"  Retrying due to JSON error in 30s...")
+                time.sleep(30)
+                continue
             raise
 
     raise Exception("call_gemini: exhausted all retries")
