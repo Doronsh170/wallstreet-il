@@ -1,4 +1,4 @@
-import json, os, requests
+import json, os, re, requests
 from datetime import datetime, timezone, timedelta
 
 ISR_TZ = timezone(timedelta(hours=3))
@@ -8,6 +8,9 @@ FINNHUB_API_KEY = os.environ.get("FINNHUB_API_KEY", "")
 REVIEW_TYPE = os.environ.get("REVIEW_TYPE", "daily_prep")
 
 ACCOUNTS = ["AIStockSavvy","wallstengine","DeIaone","StockMKTNewz","zerohedge","financialjuice"]
+
+# Global storage for validated market data (used by post-processing validation)
+_LAST_MARKET_DATA = {"prices": {}, "pcts": {}}
 
 PY_TO_HEB = {0: "שני", 1: "שלישי", 2: "רביעי", 3: "חמישי", 4: "שישי", 5: "שבת", 6: "ראשון"}
 
@@ -40,6 +43,8 @@ def fetch_market_data(weekly=False):
 
     # Daily quotes
     lines = []
+    etf_prices = {}  # Track ETF prices for index level calculation
+    etf_pcts = {}    # Track % changes for validation
     for symbol, label in symbols.items():
         try:
             r = requests.get(
@@ -52,6 +57,8 @@ def fetch_market_data(weekly=False):
                 pct = d.get("dp", 0)
                 prev = d.get("pc", 0)
                 if price > 0:
+                    etf_prices[symbol] = price
+                    etf_pcts[symbol] = pct
                     direction = "+" if pct >= 0 else ""
                     lines.append(f"  {label}: ${price:.2f} (daily: {direction}{pct:.2f}%), prev close: ${prev:.2f}")
                     print(f"  Finnhub {symbol}: ${price:.2f} ({direction}{pct:.2f}%)")
@@ -132,16 +139,37 @@ def fetch_market_data(weekly=False):
         result_lines.append("WEEKLY PERFORMANCE (use these for weekly summary, NOT the daily numbers):")
         result_lines.extend(weekly_lines)
 
+    # Pre-calculate approximate index levels from ETF prices
+    INDEX_CALC = {
+        "SPY": ("S&P 500", 10),
+        "QQQ": ("Nasdaq 100", 40),
+        "DIA": ("Dow Jones", 100),
+        "GLD": ("Gold ($/oz)", 24),
+        "IBIT": ("Bitcoin ($)", 550),
+    }
+    index_lines = []
+    for sym, (name, mult) in INDEX_CALC.items():
+        if sym in etf_prices:
+            approx = etf_prices[sym] * mult
+            if approx > 10000:
+                index_lines.append(f"  {name} ≈ {approx:,.0f}")
+            else:
+                index_lines.append(f"  {name} ≈ ${approx:,.0f}")
+            print(f"  Calculated {name}: {approx:,.0f}")
+
     result_lines.extend([
         "",
-        "CONVERSION GUIDE (ETF price → actual value):",
-        "  S&P 500 index ≈ SPY × 10 | Nasdaq 100 index ≈ QQQ × 40 | Dow index ≈ DIA × 100",
-        "  Gold $/oz ≈ GLD × 24 | Bitcoin ≈ IBIT × 550",
-        "  For exact index levels, oil prices ($/barrel), and VIX level: use Google Search.",
+        "PRE-CALCULATED INDEX LEVELS (approximate, from ETF prices × multiplier):",
+        *index_lines,
+        "  NOTE: These are APPROXIMATE. For reporting, use these levels OR verify via Google Search.",
         "  The % changes above are ACCURATE — use them for direction and magnitude.",
         "  If ANY number you write contradicts the data above, you are WRONG. Fix it.",
         "══════════════════════════════════════════════════════════════════════════════════════════\n"
     ])
+
+    # Store validated data for post-processing validation
+    global _LAST_MARKET_DATA
+    _LAST_MARKET_DATA = {"prices": etf_prices, "pcts": etf_pcts}
 
     return "\n".join(result_lines)
 
@@ -720,7 +748,7 @@ def call_gemini(prompt):
                 "contents": [{"parts": [{"text": prompt}]}],
                 "tools": [{"google_search": {}}],
                 "generationConfig": {
-                    "temperature": 0.7,
+                    "temperature": 0.35,
                     "maxOutputTokens": 8192
                 }
             }
@@ -796,6 +824,151 @@ def call_gemini(prompt):
             raise
 
     raise Exception("call_gemini: exhausted all retries")
+
+# ══════════════════════════════════════════════════════════════
+# POST-PROCESSING VALIDATION & AUTO-FIX
+# ══════════════════════════════════════════════════════════════
+
+# ── Known text errors: (pattern, replacement, description) ──
+TEXT_FIXES = [
+    # Political leaders — current titles
+    (r'הנשיא\s+לשעבר\s+טראמפ', 'הנשיא טראמפ', 'Trump is the current president'),
+    (r'נשיא\s+ארה"ב\s+לשעבר\s+טראמפ', 'נשיא ארה"ב טראמפ', 'Trump is the current president'),
+    (r'הנשיא\s+לשעבר\s+דונלד\s+טראמפ', 'הנשיא דונלד טראמפ', 'Trump is the current president'),
+    (r'טראמפ\s*,?\s*הנשיא\s+לשעבר', 'טראמפ, הנשיא', 'Trump is the current president'),
+    (r'הנשיא\s+ביידן', 'הנשיא לשעבר ביידן', 'Biden is the FORMER president'),
+    (r'נשיא\s+ארה"ב\s+ביידן', 'הנשיא לשעבר ביידן', 'Biden is the FORMER president'),
+    # Common terminology mistakes
+    (r'הנפקה\s+ראשונית\s+לציבור\s*\(ETF\)', 'תעודת סל (ETF)', 'IPO ≠ ETF'),
+    (r'תעודת\s+סל\s*\(IPO\)', 'הנפקה ראשונית (IPO)', 'ETF ≠ IPO'),
+    # Attribution mistakes
+    (r'אמזון\s+השיקה?\s+את\s+Claude', 'Anthropic השיקה את Claude', 'Claude is by Anthropic'),
+    (r'מיקרוסופט\s+השיקה?\s+את\s+ChatGPT', 'OpenAI השיקה את ChatGPT', 'ChatGPT is by OpenAI'),
+    (r'AWS\s+השיקה?\s+את\s+Claude', 'Anthropic השיקה את Claude', 'Claude is by Anthropic'),
+]
+
+# ── Index sanity ranges (approximate, updated periodically) ──
+INDEX_RANGES = {
+    # (Hebrew pattern, min_reasonable, max_reasonable, description)
+    r'(?:S&P\s*500|אס[\-&]?אנד[\-]?פי)\s*[\-–:]\s*([\d,\.]+)': (4000, 7000, 'S&P 500'),
+    r'(?:נסדק|נאסד"ק|Nasdaq)\s*(?:100|הקומפוזיט|Composite)?\s*[\-–:]\s*([\d,\.]+)': (12000, 25000, 'Nasdaq'),
+    r'(?:דאו\s*ג\'?ונס|Dow\s*Jones?|DJIA)\s*[\-–:]\s*([\d,\.]+)': (30000, 50000, 'Dow Jones'),
+    r'(?:ראסל|Russell)\s*2000\s*[\-–:]\s*([\d,\.]+)': (1500, 3500, 'Russell 2000'),
+}
+
+# ── Percentage sanity: daily % change should not exceed these ──
+PCT_MAX_DAILY = 8.0   # Flag if daily index move > 8%
+PCT_MAX_WEEKLY = 15.0  # Flag if weekly index move > 15%
+
+
+def validate_and_fix(result, review_type):
+    """
+    Post-process Gemini output: fix known text errors, validate numbers.
+    Returns (fixed_result, warnings_list).
+    """
+    warnings = []
+    fix_count = 0
+
+    def process_text(text):
+        nonlocal fix_count
+        if not isinstance(text, str):
+            return text
+
+        original = text
+
+        # ── Apply known text fixes ──
+        for pattern, replacement, desc in TEXT_FIXES:
+            new_text = re.sub(pattern, replacement, text)
+            if new_text != text:
+                fix_count += 1
+                warnings.append(f"AUTO-FIXED: {desc}")
+                print(f"  ✅ Auto-fixed: {desc}")
+                text = new_text
+
+        # ── Validate index levels ──
+        for idx_pattern, (lo, hi, name) in INDEX_RANGES.items():
+            for match in re.finditer(idx_pattern, text):
+                raw_num = match.group(1).replace(',', '').replace('.', '')
+                try:
+                    val = float(raw_num)
+                    if val < lo or val > hi:
+                        warn = f"SUSPICIOUS NUMBER: {name} = {raw_num} (expected range {lo:,}-{hi:,})"
+                        warnings.append(warn)
+                        print(f"  ⚠️  {warn}")
+
+                        # Try to auto-fix using Finnhub data if available
+                        etf_map = {'S&P 500': 'SPY', 'Nasdaq': 'QQQ', 'Dow Jones': 'DIA', 'Russell 2000': 'IWM'}
+                        etf_sym = etf_map.get(name)
+                        multipliers = {'SPY': 10, 'QQQ': 40, 'DIA': 100, 'IWM': 1}
+                        if etf_sym and etf_sym in _LAST_MARKET_DATA.get("prices", {}):
+                            correct_approx = _LAST_MARKET_DATA["prices"][etf_sym] * multipliers.get(etf_sym, 1)
+                            if lo <= correct_approx <= hi:
+                                old_str = match.group(0)
+                                new_num = f"{correct_approx:,.0f}"
+                                new_str = old_str.replace(match.group(1), new_num)
+                                text = text.replace(old_str, new_str, 1)
+                                fix_count += 1
+                                fix_warn = f"AUTO-FIXED: {name} {raw_num} → {new_num}"
+                                warnings.append(fix_warn)
+                                print(f"  ✅ {fix_warn}")
+                except (ValueError, IndexError):
+                    pass
+
+        # ── Validate percentage claims ──
+        pct_pattern = r'(?:עלייה|ירידה|עלה|ירד|זינק|צנח|איבד|הוסיף|קפץ)\s+(?:של?\s*)?(?:כ[--]?)?([\d\.]+)%'
+        for match in re.finditer(pct_pattern, text):
+            try:
+                pct_val = float(match.group(1))
+                # Check if this is about a major index (not individual stocks)
+                # Look at surrounding context (30 chars before)
+                start = max(0, match.start() - 60)
+                context = text[start:match.start()].lower()
+                is_index = any(idx in context for idx in ['s&p', 'נסדק', 'נאסד"ק', 'nasdaq', 'דאו', 'dow', 'ראסל', 'russell'])
+                if is_index and review_type in ('daily_prep', 'daily_summary') and pct_val > PCT_MAX_DAILY:
+                    warn = f"SUSPICIOUS: Index daily move of {pct_val}% exceeds {PCT_MAX_DAILY}% threshold"
+                    warnings.append(warn)
+                    print(f"  ⚠️  {warn}")
+                elif is_index and review_type in ('weekly_prep', 'weekly_summary') and pct_val > PCT_MAX_WEEKLY:
+                    warn = f"SUSPICIOUS: Index weekly move of {pct_val}% exceeds {PCT_MAX_WEEKLY}% threshold"
+                    warnings.append(warn)
+                    print(f"  ⚠️  {warn}")
+            except ValueError:
+                pass
+
+        return text
+
+    # ── Walk the JSON structure and fix all text fields ──
+    if isinstance(result, dict):
+        # Fix title
+        if "title" in result and isinstance(result["title"], str):
+            result["title"] = process_text(result["title"])
+
+        # Fix sections
+        for section in result.get("sections", []):
+            if "content" in section:
+                if isinstance(section["content"], str):
+                    section["content"] = process_text(section["content"])
+                elif isinstance(section["content"], list):
+                    section["content"] = [process_text(item) if isinstance(item, str) else item for item in section["content"]]
+            if "heading" in section and isinstance(section["heading"], str):
+                section["heading"] = process_text(section["heading"])
+
+        # Fix events items
+        for item in result.get("items", []):
+            if "title" in item:
+                item["title"] = process_text(item["title"])
+            if "description" in item:
+                item["description"] = process_text(item["description"])
+
+    if warnings:
+        print(f"\n  📋 Validation summary: {fix_count} auto-fixes, {len(warnings)} total warnings")
+        for w in warnings:
+            print(f"     • {w}")
+    else:
+        print("  ✅ Validation passed — no issues found")
+
+    return result, warnings
+
 
 # ══════════════════════════════════════════════════════════════
 # MAIN
@@ -893,6 +1066,13 @@ def main():
         return
 
     result = call_gemini(prompt)
+
+    # ── Post-processing validation & auto-fix ──
+    print("\n── Running post-processing validation ──")
+    result, validation_warnings = validate_and_fix(result, REVIEW_TYPE)
+    if validation_warnings:
+        print(f"  ⚠️  {len(validation_warnings)} issue(s) found and handled")
+    print("── Validation complete ──\n")
 
     with open("data.json", "r", encoding="utf-8") as f:
         data = json.load(f)
