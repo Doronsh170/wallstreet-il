@@ -748,8 +748,7 @@ Output JSON format:
 
 def call_gemini(prompt):
     import time
-    max_retries = 5
-    retry_waits = [30, 60, 90, 120, 180]  # Total ~8 minutes of retries
+    max_retries = 3
     for attempt in range(max_retries):
         r = requests.post(
             f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key={GEMINI_API_KEY}",
@@ -769,7 +768,7 @@ def call_gemini(prompt):
 
         if r.status_code == 503 or r.status_code == 429:
             if attempt < max_retries - 1:
-                wait = retry_waits[attempt]
+                wait = 30 * (attempt + 1)
                 print(f"  Gemini overloaded, retrying in {wait}s...")
                 time.sleep(wait)
                 continue
@@ -788,9 +787,8 @@ def call_gemini(prompt):
 
         if not text:
             if attempt < max_retries - 1:
-                wait = retry_waits[attempt]
-                print(f"  Gemini returned no text, retrying in {wait}s...")
-                time.sleep(wait)
+                print(f"  Gemini returned no text, retrying in 30s...")
+                time.sleep(30)
                 continue
             print(f"  Gemini raw response: {str(resp_data)[:500]}")
             raise Exception("Gemini returned no text")
@@ -829,9 +827,8 @@ def call_gemini(prompt):
             print(f"  Raw text (first 200 chars): {text[:200]}")
             print(f"  Raw text (last 300 chars): ...{text[-300:]}")
             if attempt < max_retries - 1:
-                wait = retry_waits[attempt]
-                print(f"  Retrying due to JSON error in {wait}s...")
-                time.sleep(wait)
+                print(f"  Retrying due to JSON error in 30s...")
+                time.sleep(30)
                 continue
             raise
 
@@ -932,7 +929,7 @@ def validate_and_fix(result, review_type):
             try:
                 pct_val = float(match.group(1))
                 # Check if this is about a major index (not individual stocks)
-                # Look at surrounding context (60 chars before)
+                # Look at surrounding context (30 chars before)
                 start = max(0, match.start() - 60)
                 context = text[start:match.start()].lower()
                 is_index = any(idx in context for idx in ['s&p', 'נסדק', 'נאסד"ק', 'nasdaq', 'דאו', 'dow', 'ראסל', 'russell'])
@@ -944,35 +941,8 @@ def validate_and_fix(result, review_type):
                     warn = f"SUSPICIOUS: Index weekly move of {pct_val}% exceeds {PCT_MAX_WEEKLY}% threshold"
                     warnings.append(warn)
                     print(f"  ⚠️  {warn}")
-
-                # ── Auto-fix: check if index % contradicts Finnhub data ──
-                if is_index and _LAST_MARKET_DATA.get("pcts"):
-                    idx_to_etf = {
-                        's&p': 'SPY', 'נסדק': 'QQQ', 'נאסד"ק': 'QQQ', 'nasdaq': 'QQQ',
-                        'דאו': 'DIA', 'dow': 'DIA', 'ראסל': 'IWM', 'russell': 'IWM'
-                    }
-                    for idx_name, etf in idx_to_etf.items():
-                        if idx_name in context and etf in _LAST_MARKET_DATA["pcts"]:
-                            correct_pct = abs(_LAST_MARKET_DATA["pcts"][etf])
-                            # If the difference is significant (> 0.5%), auto-fix
-                            if abs(pct_val - correct_pct) > 0.5:
-                                old_str = match.group(0)
-                                new_str = old_str.replace(f"{pct_val}%", f"{correct_pct:.2f}%")
-                                text = text.replace(old_str, new_str, 1)
-                                fix_count += 1
-                                fix_warn = f"AUTO-FIXED: {idx_name} percentage {pct_val}% → {correct_pct:.2f}%"
-                                warnings.append(fix_warn)
-                                print(f"  ✅ {fix_warn}")
-                            break
             except ValueError:
                 pass
-
-        # ── Flag unverified "all-time high" claims ──
-        ath_pattern = r'שיא\s*(?:כל\s*הזמנים|היסטורי|חדש)'
-        for match in re.finditer(ath_pattern, text):
-            warn = f"UNVERIFIED CLAIM: 'all-time high' at position {match.start()} — verify via search"
-            warnings.append(warn)
-            print(f"  ⚠️  {warn}")
 
         return text
 
@@ -1013,27 +983,11 @@ def fact_check_with_gemini(result, market_data, review_type):
     """
     Second Gemini call: sends the generated review + verified data back to Gemini
     with the sole task of finding and fixing factual errors.
-    Now includes google_search for verifying claims beyond Finnhub data.
     Returns corrected result dict, or original if fact-check fails.
     """
     import time
 
     review_json = json.dumps(result, ensure_ascii=False, indent=2)
-
-    # Build a compact percentage reference for the fact-checker
-    pct_reference = ""
-    if _LAST_MARKET_DATA.get("pcts"):
-        pct_lines = []
-        sym_labels = {
-            "SPY": "S&P 500", "QQQ": "Nasdaq 100", "DIA": "Dow Jones",
-            "IWM": "Russell 2000", "USO": "WTI Oil", "BNO": "Brent Oil",
-            "GLD": "Gold", "IBIT": "Bitcoin", "VIXY": "VIX", "TLT": "Bonds", "UUP": "Dollar"
-        }
-        for sym, pct in _LAST_MARKET_DATA["pcts"].items():
-            label = sym_labels.get(sym, sym)
-            direction = "+" if pct >= 0 else ""
-            pct_lines.append(f"  {label}: {direction}{pct:.2f}%")
-        pct_reference = "\nQUICK REFERENCE — CORRECT PERCENTAGES:\n" + "\n".join(pct_lines)
 
     prompt = f"""You are a FACT-CHECKER for a Hebrew financial market review. Your ONLY job is to find and fix factual errors.
 
@@ -1045,21 +999,17 @@ YOUR TASK:
 - Compare EVERY number, percentage, index level, and factual claim in the review against the verified data.
 - Fix any number that contradicts the verified data.
 - Fix any factual error you find (wrong company attribution, wrong political titles, wrong dates, wrong terminology).
-- Use Google Search to verify commodity prices (oil $/barrel, gold $/oz), company attributions, and any claim you're unsure about.
 - DO NOT change the writing style, structure, or add new content.
 - DO NOT remove content — only fix errors.
 - If everything is correct, return the review unchanged.
 
 COMMON ERRORS TO CHECK:
 - Index levels: S&P 500 should be ~SPY×10, Nasdaq 100 should be ~QQQ×40, Dow should be ~DIA×100. If an index level is wildly wrong (e.g. Nasdaq at 49,000 instead of ~19,600), fix it.
-- Percentage changes: Must match the Finnhub percentages below. If the review says S&P rose 1.5% but Finnhub says +0.85%, fix to +0.85%.
-- Direction words: If the review says "ירידה" (decline) but the verified % is positive, fix the direction word too.
+- Percentage changes: Must match the Finnhub "daily" percentages for daily reviews, or "weekly" for weekly reviews.
 - Political leaders: Donald Trump is the CURRENT US President (since Jan 2025). He is NOT a former president. Biden IS the former president.
 - Company attribution: Claude is by Anthropic, ChatGPT is by OpenAI, Gemini is by Google. A product available ON a platform is not made BY that platform.
 - Financial terms: IPO ≠ ETF. Do not confuse them.
-- Contradictions: If bullets say market rose sharply, the bottom line must not say "mixed trading" or "ירידות".
-- Commodity prices: Use Google Search to verify oil and gold prices. Do NOT trust ETF-derived calculations.
-{pct_reference}
+- Contradictions: If bullets say market rose sharply, the bottom line must not say "mixed trading".
 
 VERIFIED MARKET DATA:
 {market_data if market_data else "(No Finnhub data available for this run)"}
@@ -1075,7 +1025,6 @@ OUTPUT: Return the corrected review as valid JSON in EXACTLY the same structure.
             headers={"Content-Type": "application/json"},
             json={
                 "contents": [{"parts": [{"text": prompt}]}],
-                "tools": [{"google_search": {}}],
                 "generationConfig": {
                     "temperature": 0.1,
                     "maxOutputTokens": 8192
@@ -1135,12 +1084,11 @@ OUTPUT: Return the corrected review as valid JSON in EXACTLY the same structure.
             print("  Fact-check broke JSON structure, skipping")
             return result
 
-        # ── Detailed diff: log exactly what the fact-checker changed ──
+        # Detect what changed
         original_str = json.dumps(result, ensure_ascii=False)
         checked_str = json.dumps(checked, ensure_ascii=False)
         if original_str != checked_str:
-            print("  ✅ Fact-checker made corrections. Details:")
-            _log_fact_check_diff(result, checked)
+            print("  ✅ Fact-checker made corrections")
         else:
             print("  ✅ Fact-checker confirmed — no errors found")
 
@@ -1152,123 +1100,6 @@ OUTPUT: Return the corrected review as valid JSON in EXACTLY the same structure.
     except Exception as e:
         print(f"  Fact-check failed: {e}, using original")
         return result
-
-
-def _log_fact_check_diff(original, checked):
-    """Log a human-readable diff of what the fact-checker changed."""
-
-    def extract_texts(obj):
-        """Extract all text fields from the review JSON."""
-        texts = {}
-        if isinstance(obj, dict):
-            if "title" in obj:
-                texts["title"] = obj["title"]
-            for i, section in enumerate(obj.get("sections", [])):
-                heading = section.get("heading", f"section_{i}")
-                content = section.get("content", "")
-                if isinstance(content, list):
-                    content = "\n".join(str(c) for c in content)
-                texts[heading] = content
-            for i, item in enumerate(obj.get("items", [])):
-                texts[f"item_{i}"] = item.get("title", "") + " | " + item.get("description", "")
-        return texts
-
-    orig_texts = extract_texts(original)
-    new_texts = extract_texts(checked)
-
-    for key in set(list(orig_texts.keys()) + list(new_texts.keys())):
-        old_val = orig_texts.get(key, "")
-        new_val = new_texts.get(key, "")
-        if old_val != new_val:
-            # Find specific differences by splitting into words
-            old_words = old_val.split()
-            new_words = new_val.split()
-
-            # Simple word-level diff: find changed segments
-            changes = []
-            max_len = max(len(old_words), len(new_words))
-            i = 0
-            while i < max_len:
-                if i >= len(old_words) or i >= len(new_words) or old_words[i] != new_words[i]:
-                    # Find the extent of the change
-                    start = i
-                    while i < max_len and (i >= len(old_words) or i >= len(new_words) or old_words[i] != new_words[i]):
-                        i += 1
-                    old_chunk = " ".join(old_words[start:min(i, len(old_words))])
-                    new_chunk = " ".join(new_words[start:min(i, len(new_words))])
-                    if old_chunk or new_chunk:
-                        changes.append(f'"{old_chunk}" → "{new_chunk}"')
-                i += 1
-
-            if changes:
-                print(f"     [{key}]:")
-                for change in changes[:5]:  # Limit to 5 changes per section
-                    print(f"       • {change}")
-                if len(changes) > 5:
-                    print(f"       ... and {len(changes) - 5} more changes")
-
-
-def _check_contradictions(result, review_type):
-    """
-    Layer 4: Check for internal contradictions between bullets and bottom line.
-    Detects cases where bullets say market rose but bottom line says decline, etc.
-    """
-    if not isinstance(result, dict) or "sections" not in result:
-        print("  ✅ No sections to check")
-        return
-
-    sections = result.get("sections", [])
-    if len(sections) < 2:
-        print("  ✅ Not enough sections to compare")
-        return
-
-    bullets_text = ""
-    bottom_line = ""
-    for section in sections:
-        heading = section.get("heading", "")
-        content = section.get("content", "")
-        if isinstance(content, list):
-            content = " ".join(str(c) for c in content)
-
-        if "שורה תחתונה" in heading:
-            bottom_line = content
-        else:
-            bullets_text = content
-
-    if not bullets_text or not bottom_line:
-        print("  ✅ Missing bullets or bottom line, skipping")
-        return
-
-    # Detect dominant direction in bullets
-    rise_words = ['עלייה', 'עלה', 'זינק', 'קפץ', 'הוסיף', 'חיובי', 'ירוק', 'עליות']
-    fall_words = ['ירידה', 'ירד', 'צנח', 'איבד', 'שלילי', 'אדום', 'ירידות', 'נפל']
-
-    bullets_lower = bullets_text.lower()
-    bottom_lower = bottom_line.lower()
-
-    bullets_rise = sum(1 for w in rise_words if w in bullets_lower)
-    bullets_fall = sum(1 for w in fall_words if w in bullets_lower)
-    bottom_rise = sum(1 for w in rise_words if w in bottom_lower)
-    bottom_fall = sum(1 for w in fall_words if w in bottom_lower)
-
-    # Check for direction contradiction
-    bullets_direction = "up" if bullets_rise > bullets_fall + 2 else ("down" if bullets_fall > bullets_rise + 2 else "mixed")
-    bottom_direction = "up" if bottom_rise > bottom_fall + 1 else ("down" if bottom_fall > bottom_rise + 1 else "mixed")
-
-    if bullets_direction == "up" and bottom_direction == "down":
-        print("  ⚠️  CONTRADICTION: Bullets indicate RISING market, but bottom line suggests DECLINE")
-    elif bullets_direction == "down" and bottom_direction == "up":
-        print("  ⚠️  CONTRADICTION: Bullets indicate FALLING market, but bottom line suggests RISE")
-    else:
-        print("  ✅ No contradictions detected")
-
-    # Also check for Finnhub % direction vs text direction
-    if _LAST_MARKET_DATA.get("pcts"):
-        spy_pct = _LAST_MARKET_DATA["pcts"].get("SPY", 0)
-        if spy_pct > 0.3 and bullets_direction == "down":
-            print(f"  ⚠️  CONTRADICTION: Finnhub shows SPY +{spy_pct:.2f}% but bullets suggest decline")
-        elif spy_pct < -0.3 and bullets_direction == "up":
-            print(f"  ⚠️  CONTRADICTION: Finnhub shows SPY {spy_pct:.2f}% but bullets suggest rise")
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1374,20 +1205,9 @@ def main():
     if validation_warnings:
         print(f"  {len(validation_warnings)} issue(s) found and fixed")
 
-    # ── Layer 2: Gemini fact-checker (second LLM call with Google Search) ──
+    # ── Layer 2: Gemini fact-checker (second LLM call) ──
     print("\n── Layer 2: Gemini fact-checker ──")
     result = fact_check_with_gemini(result, market_data, REVIEW_TYPE)
-
-    # ── Layer 3: Re-validate after fact-checker (catch errors it may have introduced) ──
-    print("\n── Layer 3: Post-fact-check validation ──")
-    result, post_warnings = validate_and_fix(result, REVIEW_TYPE)
-    if post_warnings:
-        print(f"  ⚠️  Fact-checker introduced {len(post_warnings)} issue(s) — auto-fixed")
-
-    # ── Layer 4: Contradiction detector ──
-    print("\n── Layer 4: Contradiction check ──")
-    _check_contradictions(result, REVIEW_TYPE)
-
     print("── Validation complete ──\n")
 
     with open("data.json", "r", encoding="utf-8") as f:
