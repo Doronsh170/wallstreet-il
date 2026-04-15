@@ -135,7 +135,7 @@ def fetch_market_data(weekly=False):
     result_lines.extend([
         "",
         "CONVERSION GUIDE (ETF price → actual value):",
-        "  S&P 500 index ≈ SPY × 10 | Nasdaq 100 index ≈ QQQ × 80 | Dow index ≈ DIA × 100",
+        "  S&P 500 index ≈ SPY × 10 | Nasdaq 100 index ≈ QQQ × 40 | Dow index ≈ DIA × 100",
         "  Gold $/oz ≈ GLD × 24 | Bitcoin ≈ IBIT × 550",
         "  For exact index levels, oil prices ($/barrel), and VIX level: use Google Search.",
         "  The % changes above are ACCURATE — use them for direction and magnitude.",
@@ -360,7 +360,7 @@ SHARED_RULES = """Rules:
 
 CRITICAL — KEY MARKET DATA (MANDATORY VERIFICATION):
 - If VERIFIED MARKET DATA from Finnhub API is provided above the tweets, you MUST use those numbers for index performance (% change). Do NOT override them with numbers from tweets or from memory.
-- Use the verified % changes as-is. For exact index point levels, use Google Search to convert ETF prices to index levels (S&P 500 ≈ SPY × 10, Nasdaq 100 ≈ QQQ × ~80, Dow ≈ DIA × ~100).
+- Use the verified % changes as-is. For exact index point levels, use Google Search to convert ETF prices to index levels (S&P 500 ≈ SPY × 10, Nasdaq 100 ≈ QQQ × ~40, Dow ≈ DIA × ~100).
 - You MUST verify via Google Search the current prices of: Brent crude oil, WTI crude oil, gold, and any other commodity you mention.
 - If a tweet states a price that seems extreme or unusual, you MUST verify it via Google Search before including it.
 - NEVER trust a single tweet for major price data. Always cross-reference.
