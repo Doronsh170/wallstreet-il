@@ -404,6 +404,10 @@ CRITICAL — FACTUAL ACCURACY (ATTRIBUTION):
   * A product available ON a platform is NOT made BY that platform.
 - When in doubt about who made what, use Google Search to verify. Getting attribution wrong is as bad as getting a number wrong.
 
+CRITICAL — CURRENT POLITICAL LEADERS (DO NOT GET WRONG):
+- Donald Trump is the CURRENT President of the United States (inaugurated January 2025). He is NOT a former president. Write "הנשיא טראמפ" or "נשיא ארה"ב טראמפ" — NEVER "הנשיא לשעבר".
+- If you are unsure about any political leader's current title, use Google Search to verify. Writing "לשעבר" for a sitting leader is a critical credibility error.
+
 CRITICAL — US-ISRAEL TIME CONVERSION:
 - US market opens at 9:30 AM ET, closes at 4:00 PM ET.
 - To convert US Eastern Time to Israel time, use the offset provided below.
