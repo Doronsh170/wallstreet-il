@@ -1,4 +1,4 @@
-import json, os, requests
+import json, os, re, requests
 from datetime import datetime, timezone, timedelta
 
 ISR_TZ = timezone(timedelta(hours=3))
@@ -866,7 +866,7 @@ def validate_and_fix(result, review_type):
                     pass
 
         # Validate percentage claims
-        pct_pattern = r'(?:עלייה|ירידה|עלה|ירד|זינק|צנח|איבד|הוסיף|קפץ)\s+(?:של?\s*)?(?:כ[\-]?)?([\\d\\.]+)%'
+        pct_pattern = r'(?:עלייה|ירידה|עלה|ירד|זינק|צנח|איבד|הוסיף|קפץ)\s+(?:של?\s*)?(?:כ[\-]?)?([\d\.]+)%'
         for match in re.finditer(pct_pattern, text):
             try:
                 pct_val = float(match.group(1))
