@@ -1,4 +1,4 @@
-import json, os, re, requests
+import json, os, requests
 from datetime import datetime, timezone, timedelta
 
 ISR_TZ = timezone(timedelta(hours=3))
@@ -8,9 +8,6 @@ FINNHUB_API_KEY = os.environ.get("FINNHUB_API_KEY", "")
 REVIEW_TYPE = os.environ.get("REVIEW_TYPE", "daily_prep")
 
 ACCOUNTS = ["AIStockSavvy","wallstengine","DeIaone","StockMKTNewz","zerohedge","financialjuice"]
-
-# Global storage for validated market data (used by post-processing validation)
-_LAST_MARKET_DATA = {"prices": {}, "pcts": {}}
 
 PY_TO_HEB = {0: "שני", 1: "שלישי", 2: "רביעי", 3: "חמישי", 4: "שישי", 5: "שבת", 6: "ראשון"}
 
@@ -43,8 +40,6 @@ def fetch_market_data(weekly=False):
 
     # Daily quotes
     lines = []
-    etf_prices = {}  # Track ETF prices for index level calculation
-    etf_pcts = {}    # Track % changes for validation
     for symbol, label in symbols.items():
         try:
             r = requests.get(
@@ -57,8 +52,6 @@ def fetch_market_data(weekly=False):
                 pct = d.get("dp", 0)
                 prev = d.get("pc", 0)
                 if price > 0:
-                    etf_prices[symbol] = price
-                    etf_pcts[symbol] = pct
                     direction = "+" if pct >= 0 else ""
                     lines.append(f"  {label}: ${price:.2f} (daily: {direction}{pct:.2f}%), prev close: ${prev:.2f}")
                     print(f"  Finnhub {symbol}: ${price:.2f} ({direction}{pct:.2f}%)")
@@ -139,37 +132,17 @@ def fetch_market_data(weekly=False):
         result_lines.append("WEEKLY PERFORMANCE (use these for weekly summary, NOT the daily numbers):")
         result_lines.extend(weekly_lines)
 
-    # Pre-calculate approximate index levels from ETF prices
-    INDEX_CALC = {
-        "SPY": ("S&P 500", 10),
-        "QQQ": ("Nasdaq 100", 40),
-        "DIA": ("Dow Jones", 100),
-        "GLD": ("Gold ($/oz)", 24),
-        "IBIT": ("Bitcoin ($)", 550),
-    }
-    index_lines = []
-    for sym, (name, mult) in INDEX_CALC.items():
-        if sym in etf_prices:
-            approx = etf_prices[sym] * mult
-            if approx > 10000:
-                index_lines.append(f"  {name} ≈ {approx:,.0f}")
-            else:
-                index_lines.append(f"  {name} ≈ ${approx:,.0f}")
-            print(f"  Calculated {name}: {approx:,.0f}")
-
     result_lines.extend([
         "",
-        "PRE-CALCULATED INDEX LEVELS (USE THESE — do NOT calculate your own):",
-        *index_lines,
-        "  These are ready-to-use numbers. Copy them into the review as-is. Do NOT recalculate from ETF prices.",
+        "CONVERSION GUIDE (ETF price → actual value):",
+        "  S&P 500 index ≈ SPY × 10 | Nasdaq 100 index ≈ QQQ × 40 | Dow index ≈ DIA × 100",
+        "  Gold $/oz ≈ GLD × 10.7 | Bitcoin ≈ IBIT × 550",
+        "  VIXY ETF price is NOT the VIX index level. For the actual VIX level, use Google Search.",
+        "  For exact index levels, oil prices ($/barrel), and VIX level: ALWAYS use Google Search.",
         "  The % changes above are ACCURATE — use them for direction and magnitude.",
         "  If ANY number you write contradicts the data above, you are WRONG. Fix it.",
         "══════════════════════════════════════════════════════════════════════════════════════════\n"
     ])
-
-    # Store validated data for post-processing validation
-    global _LAST_MARKET_DATA
-    _LAST_MARKET_DATA = {"prices": etf_prices, "pcts": etf_pcts}
 
     return "\n".join(result_lines)
 
@@ -388,21 +361,12 @@ SHARED_RULES = """Rules:
 
 CRITICAL — KEY MARKET DATA (MANDATORY VERIFICATION):
 - If VERIFIED MARKET DATA from Finnhub API is provided above the tweets, you MUST use those numbers for index performance (% change). Do NOT override them with numbers from tweets or from memory.
-- Use the verified % changes as-is.
-- If PRE-CALCULATED INDEX LEVELS are provided, use those levels directly. Do NOT recalculate them yourself.
+- Use the verified % changes as-is. For exact index point levels, use Google Search to convert ETF prices to index levels (S&P 500 ≈ SPY × 10, Nasdaq 100 ≈ QQQ × ~40, Dow ≈ DIA × ~100).
 - You MUST verify via Google Search the current prices of: Brent crude oil, WTI crude oil, gold, and any other commodity you mention.
 - If a tweet states a price that seems extreme or unusual, you MUST verify it via Google Search before including it.
 - NEVER trust a single tweet for major price data. Always cross-reference.
 - NEVER write vague descriptions like "the market closed in green territory" or "mixed trading" without exact numbers.
 - NEVER claim an index or stock is at an "all-time high" (שיא / שיא כל הזמנים) unless you verify it via Google Search. A positive day does NOT automatically mean a record.
-
-CRITICAL — ZERO-CALCULATION POLICY:
-- You are FORBIDDEN from performing mathematical calculations. Do NOT multiply, divide, add, or convert numbers yourself.
-- For index levels: use ONLY the PRE-CALCULATED INDEX LEVELS section provided. If no pre-calculated level is available for a specific index, use Google Search — do NOT calculate it from ETF prices.
-- For percentage changes: use ONLY the verified percentages from the Finnhub data section. Do NOT calculate percentage changes yourself from two price points.
-- For commodity prices (oil $/barrel, gold $/oz): use Google Search to find the actual price. Do NOT calculate from ETF prices.
-- If you need a number that is not provided and cannot be found via Google Search — OMIT it entirely. Writing nothing is better than writing a wrong number.
-- This policy exists because calculation errors (e.g. writing Nasdaq at 49,200 instead of 19,600) are the #1 source of credibility-destroying mistakes.
 
 CRITICAL — MAJOR ECONOMIC DATA (DO NOT MISS):
 - Use Google Search to check if any major US economic data was released today: CPI, PPI, NFP, GDP, Jobless Claims, ISM PMI, Consumer Confidence, Retail Sales, FOMC minutes/decision.
@@ -412,8 +376,8 @@ CRITICAL — MAJOR ECONOMIC DATA (DO NOT MISS):
 - When mentioning economic data, ALWAYS include the actual numbers: percentage change (monthly AND annual), comparison to forecast, and comparison to previous period. For example: "מדד המחירים לצרכן (CPI) עלה ב-0.9% על בסיס חודשי וב-3.3% על בסיס שנתי, מעל הצפי של 3.4%. מדד הליבה (Core CPI) עלה ב-0.2% בלבד, נמוך מהצפי" — NOT just "מדד המחירים הצביע על עלייה חדה". Vague descriptions without numbers are unacceptable.
 
 CRITICAL — DATA ACCURACY:
-- EVERY number in the review must come from one of these sources: (1) Finnhub verified data above, (2) PRE-CALCULATED INDEX LEVELS above, (3) a specific tweet, or (4) Google Search verification.
-- NEVER invent, estimate, calculate, or recall prices from memory. If you cannot point to a source, do NOT include the number.
+- EVERY number in the review must come from one of these sources: (1) Finnhub verified data above, (2) a specific tweet, or (3) Google Search verification.
+- NEVER invent, estimate, or recall prices from memory. If you cannot point to a source, do NOT include the number.
 - For stock-specific data ($TICKER moves, earnings, upgrades): use numbers from the tweets.
 - If the tweets mention a percentage move but no absolute price, report only the percentage — do NOT guess the price.
 - If a number from a tweet contradicts the Finnhub verified data, the Finnhub data is correct — the tweet is wrong.
@@ -757,7 +721,7 @@ def call_gemini(prompt):
                 "contents": [{"parts": [{"text": prompt}]}],
                 "tools": [{"google_search": {}}],
                 "generationConfig": {
-                    "temperature": 0.35,
+                    "temperature": 0.7,
                     "maxOutputTokens": 8192
                 }
             }
@@ -833,274 +797,6 @@ def call_gemini(prompt):
             raise
 
     raise Exception("call_gemini: exhausted all retries")
-
-# ══════════════════════════════════════════════════════════════
-# POST-PROCESSING VALIDATION & AUTO-FIX
-# ══════════════════════════════════════════════════════════════
-
-# ── Known text errors: (pattern, replacement, description) ──
-TEXT_FIXES = [
-    # Political leaders — current titles
-    (r'הנשיא\s+לשעבר\s+טראמפ', 'הנשיא טראמפ', 'Trump is the current president'),
-    (r'נשיא\s+ארה"ב\s+לשעבר\s+טראמפ', 'נשיא ארה"ב טראמפ', 'Trump is the current president'),
-    (r'הנשיא\s+לשעבר\s+דונלד\s+טראמפ', 'הנשיא דונלד טראמפ', 'Trump is the current president'),
-    (r'טראמפ\s*,?\s*הנשיא\s+לשעבר', 'טראמפ, הנשיא', 'Trump is the current president'),
-    (r'הנשיא\s+ביידן', 'הנשיא לשעבר ביידן', 'Biden is the FORMER president'),
-    (r'נשיא\s+ארה"ב\s+ביידן', 'הנשיא לשעבר ביידן', 'Biden is the FORMER president'),
-    # Common terminology mistakes
-    (r'הנפקה\s+ראשונית\s+לציבור\s*\(ETF\)', 'תעודת סל (ETF)', 'IPO ≠ ETF'),
-    (r'תעודת\s+סל\s*\(IPO\)', 'הנפקה ראשונית (IPO)', 'ETF ≠ IPO'),
-    # Attribution mistakes
-    (r'אמזון\s+השיקה?\s+את\s+Claude', 'Anthropic השיקה את Claude', 'Claude is by Anthropic'),
-    (r'מיקרוסופט\s+השיקה?\s+את\s+ChatGPT', 'OpenAI השיקה את ChatGPT', 'ChatGPT is by OpenAI'),
-    (r'AWS\s+השיקה?\s+את\s+Claude', 'Anthropic השיקה את Claude', 'Claude is by Anthropic'),
-]
-
-# ── Index sanity ranges (approximate, updated periodically) ──
-INDEX_RANGES = {
-    # (Hebrew pattern, min_reasonable, max_reasonable, description)
-    r'(?:S&P\s*500|אס[\-&]?אנד[\-]?פי)\s*[\-–:]\s*([\d,\.]+)': (4000, 7000, 'S&P 500'),
-    r'(?:נסדק|נאסד"ק|Nasdaq)\s*(?:100|הקומפוזיט|Composite)?\s*[\-–:]\s*([\d,\.]+)': (12000, 25000, 'Nasdaq'),
-    r'(?:דאו\s*ג\'?ונס|Dow\s*Jones?|DJIA)\s*[\-–:]\s*([\d,\.]+)': (30000, 50000, 'Dow Jones'),
-    r'(?:ראסל|Russell)\s*2000\s*[\-–:]\s*([\d,\.]+)': (1500, 3500, 'Russell 2000'),
-}
-
-# ── Percentage sanity: daily % change should not exceed these ──
-PCT_MAX_DAILY = 8.0   # Flag if daily index move > 8%
-PCT_MAX_WEEKLY = 15.0  # Flag if weekly index move > 15%
-
-
-def validate_and_fix(result, review_type):
-    """
-    Post-process Gemini output: fix known text errors, validate numbers.
-    Returns (fixed_result, warnings_list).
-    """
-    warnings = []
-    fix_count = 0
-
-    def process_text(text):
-        nonlocal fix_count
-        if not isinstance(text, str):
-            return text
-
-        original = text
-
-        # ── Apply known text fixes ──
-        for pattern, replacement, desc in TEXT_FIXES:
-            new_text = re.sub(pattern, replacement, text)
-            if new_text != text:
-                fix_count += 1
-                warnings.append(f"AUTO-FIXED: {desc}")
-                print(f"  ✅ Auto-fixed: {desc}")
-                text = new_text
-
-        # ── Validate index levels ──
-        for idx_pattern, (lo, hi, name) in INDEX_RANGES.items():
-            for match in re.finditer(idx_pattern, text):
-                raw_num = match.group(1).replace(',', '').replace('.', '')
-                try:
-                    val = float(raw_num)
-                    if val < lo or val > hi:
-                        warn = f"SUSPICIOUS NUMBER: {name} = {raw_num} (expected range {lo:,}-{hi:,})"
-                        warnings.append(warn)
-                        print(f"  ⚠️  {warn}")
-
-                        # Try to auto-fix using Finnhub data if available
-                        etf_map = {'S&P 500': 'SPY', 'Nasdaq': 'QQQ', 'Dow Jones': 'DIA', 'Russell 2000': 'IWM'}
-                        etf_sym = etf_map.get(name)
-                        multipliers = {'SPY': 10, 'QQQ': 40, 'DIA': 100, 'IWM': 1}
-                        if etf_sym and etf_sym in _LAST_MARKET_DATA.get("prices", {}):
-                            correct_approx = _LAST_MARKET_DATA["prices"][etf_sym] * multipliers.get(etf_sym, 1)
-                            if lo <= correct_approx <= hi:
-                                old_str = match.group(0)
-                                new_num = f"{correct_approx:,.0f}"
-                                new_str = old_str.replace(match.group(1), new_num)
-                                text = text.replace(old_str, new_str, 1)
-                                fix_count += 1
-                                fix_warn = f"AUTO-FIXED: {name} {raw_num} → {new_num}"
-                                warnings.append(fix_warn)
-                                print(f"  ✅ {fix_warn}")
-                except (ValueError, IndexError):
-                    pass
-
-        # ── Validate percentage claims ──
-        pct_pattern = r'(?:עלייה|ירידה|עלה|ירד|זינק|צנח|איבד|הוסיף|קפץ)\s+(?:של?\s*)?(?:כ[--]?)?([\d\.]+)%'
-        for match in re.finditer(pct_pattern, text):
-            try:
-                pct_val = float(match.group(1))
-                # Check if this is about a major index (not individual stocks)
-                # Look at surrounding context (30 chars before)
-                start = max(0, match.start() - 60)
-                context = text[start:match.start()].lower()
-                is_index = any(idx in context for idx in ['s&p', 'נסדק', 'נאסד"ק', 'nasdaq', 'דאו', 'dow', 'ראסל', 'russell'])
-                if is_index and review_type in ('daily_prep', 'daily_summary') and pct_val > PCT_MAX_DAILY:
-                    warn = f"SUSPICIOUS: Index daily move of {pct_val}% exceeds {PCT_MAX_DAILY}% threshold"
-                    warnings.append(warn)
-                    print(f"  ⚠️  {warn}")
-                elif is_index and review_type in ('weekly_prep', 'weekly_summary') and pct_val > PCT_MAX_WEEKLY:
-                    warn = f"SUSPICIOUS: Index weekly move of {pct_val}% exceeds {PCT_MAX_WEEKLY}% threshold"
-                    warnings.append(warn)
-                    print(f"  ⚠️  {warn}")
-            except ValueError:
-                pass
-
-        return text
-
-    # ── Walk the JSON structure and fix all text fields ──
-    if isinstance(result, dict):
-        # Fix title
-        if "title" in result and isinstance(result["title"], str):
-            result["title"] = process_text(result["title"])
-
-        # Fix sections
-        for section in result.get("sections", []):
-            if "content" in section:
-                if isinstance(section["content"], str):
-                    section["content"] = process_text(section["content"])
-                elif isinstance(section["content"], list):
-                    section["content"] = [process_text(item) if isinstance(item, str) else item for item in section["content"]]
-            if "heading" in section and isinstance(section["heading"], str):
-                section["heading"] = process_text(section["heading"])
-
-        # Fix events items
-        for item in result.get("items", []):
-            if "title" in item:
-                item["title"] = process_text(item["title"])
-            if "description" in item:
-                item["description"] = process_text(item["description"])
-
-    if warnings:
-        print(f"\n  📋 Validation summary: {fix_count} auto-fixes, {len(warnings)} total warnings")
-        for w in warnings:
-            print(f"     • {w}")
-    else:
-        print("  ✅ Validation passed — no issues found")
-
-    return result, warnings
-
-
-def fact_check_with_gemini(result, market_data, review_type):
-    """
-    Second Gemini call: sends the generated review + verified data back to Gemini
-    with the sole task of finding and fixing factual errors.
-    Returns corrected result dict, or original if fact-check fails.
-    """
-    import time
-
-    review_json = json.dumps(result, ensure_ascii=False, indent=2)
-
-    prompt = f"""You are a FACT-CHECKER for a Hebrew financial market review. Your ONLY job is to find and fix factual errors.
-
-Below you have TWO inputs:
-1. VERIFIED MARKET DATA — these numbers are 100% correct, sourced from Finnhub API.
-2. THE REVIEW — a Hebrew market review that may contain factual errors.
-
-YOUR TASK:
-- Compare EVERY number, percentage, index level, and factual claim in the review against the verified data.
-- Fix any number that contradicts the verified data.
-- Fix any factual error you find (wrong company attribution, wrong political titles, wrong dates, wrong terminology).
-- DO NOT change the writing style, structure, or add new content.
-- DO NOT remove content — only fix errors.
-- If everything is correct, return the review unchanged.
-
-COMMON ERRORS TO CHECK:
-- Index levels: S&P 500 should be ~SPY×10, Nasdaq 100 should be ~QQQ×40, Dow should be ~DIA×100. If an index level is wildly wrong (e.g. Nasdaq at 49,000 instead of ~19,600), fix it.
-- Percentage changes: Must match the Finnhub "daily" percentages for daily reviews, or "weekly" for weekly reviews.
-- Political leaders: Donald Trump is the CURRENT US President (since Jan 2025). He is NOT a former president. Biden IS the former president.
-- Company attribution: Claude is by Anthropic, ChatGPT is by OpenAI, Gemini is by Google. A product available ON a platform is not made BY that platform.
-- Financial terms: IPO ≠ ETF. Do not confuse them.
-- Contradictions: If bullets say market rose sharply, the bottom line must not say "mixed trading".
-
-VERIFIED MARKET DATA:
-{market_data if market_data else "(No Finnhub data available for this run)"}
-
-THE REVIEW TO CHECK:
-{review_json}
-
-OUTPUT: Return the corrected review as valid JSON in EXACTLY the same structure. No backticks, no explanations — pure JSON only."""
-
-    try:
-        r = requests.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}",
-            headers={"Content-Type": "application/json"},
-            json={
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {
-                    "temperature": 0.1,
-                    "maxOutputTokens": 8192
-                }
-            },
-            timeout=120
-        )
-
-        if not r.ok:
-            print(f"  Fact-check Gemini returned status {r.status_code}, skipping")
-            return result
-
-        resp_data = r.json()
-        candidate = resp_data.get("candidates", [{}])[0]
-        parts = candidate.get("content", {}).get("parts", [])
-        text = ""
-        for part in parts:
-            if "text" in part:
-                text = part["text"]
-
-        if not text:
-            print("  Fact-check returned no text, skipping")
-            return result
-
-        text = text.strip()
-        if text.startswith("```"):
-            text = text.split("\n", 1)[1] if "\n" in text else text[3:]
-        if text.endswith("```"):
-            text = text[:-3]
-        text = text.strip()
-
-        # Remove citation brackets
-        text = re.sub(r'\s*\[\d+(?:,\s*\d+)*\]', '', text)
-
-        # Extract JSON
-        start = text.find('{')
-        if start >= 0:
-            depth = 0
-            end = start
-            for i in range(start, len(text)):
-                if text[i] == '{':
-                    depth += 1
-                elif text[i] == '}':
-                    depth -= 1
-                    if depth == 0:
-                        end = i + 1
-                        break
-            text = text[start:end]
-
-        checked = json.loads(text)
-
-        # Verify structure is preserved
-        if "sections" in result and "sections" not in checked:
-            print("  Fact-check broke JSON structure, skipping")
-            return result
-        if "items" in result and "items" not in checked:
-            print("  Fact-check broke JSON structure, skipping")
-            return result
-
-        # Detect what changed
-        original_str = json.dumps(result, ensure_ascii=False)
-        checked_str = json.dumps(checked, ensure_ascii=False)
-        if original_str != checked_str:
-            print("  ✅ Fact-checker made corrections")
-        else:
-            print("  ✅ Fact-checker confirmed — no errors found")
-
-        return checked
-
-    except json.JSONDecodeError as e:
-        print(f"  Fact-check JSON parse error: {e}, using original")
-        return result
-    except Exception as e:
-        print(f"  Fact-check failed: {e}, using original")
-        return result
-
 
 # ══════════════════════════════════════════════════════════════
 # MAIN
@@ -1198,17 +894,6 @@ def main():
         return
 
     result = call_gemini(prompt)
-
-    # ── Layer 1: Regex-based auto-fix (instant, deterministic) ──
-    print("\n── Layer 1: Regex validation ──")
-    result, validation_warnings = validate_and_fix(result, REVIEW_TYPE)
-    if validation_warnings:
-        print(f"  {len(validation_warnings)} issue(s) found and fixed")
-
-    # ── Layer 2: Gemini fact-checker (second LLM call) ──
-    print("\n── Layer 2: Gemini fact-checker ──")
-    result = fact_check_with_gemini(result, market_data, REVIEW_TYPE)
-    print("── Validation complete ──\n")
 
     with open("data.json", "r", encoding="utf-8") as f:
         data = json.load(f)
