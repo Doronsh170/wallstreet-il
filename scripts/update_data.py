@@ -683,7 +683,15 @@ Event types to include: macro data (NFP, CPI, PPI, PMI, GDP, jobless claims), Fe
         now_time = datetime.now(ISR_TZ).strftime('%H:%M')
         return f"""You are a Wall Street news desk editor delivering a real-time news update in Hebrew.
 
+CURRENT DATE AND TIME: {date_str} at {now_time} Israel time.
+
 Your task: Based on the tweets/posts below, write a rapid-fire summary of the most important events and developments happening RIGHT NOW that are relevant to Wall Street investors. This is a "מה קורה עכשיו" update — just the news, no market data or index levels.
+
+CRITICAL — ONLY EVENTS THAT HAVE ALREADY HAPPENED:
+- Today is {date_str} at {now_time} Israel time. Only include events that occurred BEFORE this time.
+- If economic data is scheduled for later today (e.g. CPI at 15:30 but now is 11:00), do NOT present it as "already released".
+- For each economic data point provided in the verified data above, check the date — if the date is NOT today ({date_str}), do NOT include it in this live news update.
+- This is a snapshot of NOW — not a summary of recent days.
 
 {SHARED_RULES}
 
