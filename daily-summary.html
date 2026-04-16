@@ -148,27 +148,45 @@
       }catch(e){console.error(e);}
     }
 
-    function getReviewText() {
+    function getReviewText(shortVersion) {
       const title = document.getElementById('pageDate').textContent;
       const area = document.getElementById('contentArea');
       let text = title + '\n\n';
       area.querySelectorAll('.content-area').forEach(section => {
         const heading = section.querySelector('h2').textContent;
+        // Short version: skip "שורה תחתונה" section
+        if (shortVersion && heading.includes('שורה תחתונה')) return;
         text += heading + '\n';
         section.querySelectorAll('li').forEach(li => { text += '• ' + li.textContent + '\n'; });
-        section.querySelectorAll('p.text-wall-700').forEach(p => { text += p.textContent + '\n'; });
+        if (!shortVersion) {
+          section.querySelectorAll('p.text-wall-700').forEach(p => { text += p.textContent + '\n'; });
+        }
         text += '\n';
       });
-      text += 'וול סטריט IL · doronsh170.github.io/wallstreet-il';
+      if (shortVersion) {
+        text += '📊 לסקירה המלאה: https://doronsh170.github.io/wallstreet-il/' + location.pathname.split('/').pop() + '\n\n';
+      } else {
+        text += 'וול סטריט IL · doronsh170.github.io/wallstreet-il\n\n';
+      }
+      text += '⚠️ גילוי נאות: תוכן זה נוצר באמצעות AI לצרכים אינפורמטיביים בלבד. אין באמור ייעוץ השקעות או המלצה לפעולה בניירות ערך.';
       return text;
     }
 
     function shareWhatsApp() {
-      const text = getReviewText();
+      const text = getReviewText(true);
       window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
     }
 
     function exportPDF() {
+      // Add disclaimer before printing
+      const existing = document.getElementById('pdfDisclaimer');
+      if (!existing) {
+        const disclaimer = document.createElement('div');
+        disclaimer.id = 'pdfDisclaimer';
+        disclaimer.style.cssText = 'margin-top: 20px; padding: 12px; border-top: 1px solid #e2e5ec; font-size: 11px; color: #64748b; text-align: center;';
+        disclaimer.textContent = '⚠️ גילוי נאות: תוכן זה נוצר באמצעות AI לצרכים אינפורמטיביים בלבד. אין באמור ייעוץ השקעות או המלצה לפעולה בניירות ערך.';
+        document.getElementById('contentArea').appendChild(disclaimer);
+      }
       window.print();
     }
 
