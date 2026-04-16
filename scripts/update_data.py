@@ -572,7 +572,17 @@ def get_prompt(tweets, review_type, date_str, day_name, title_date_str=None, tit
         is_same_day = (date_str == title_date_str)
         if is_trading:
             if is_same_day:
-                trading_status = "The briefing is for TODAY — a regular trading day. Use 'היום' and 'הבוקר' freely."
+                trading_status = """The briefing is for TODAY — a regular trading day.
+
+⚠️ CRITICAL TENSE RULE — THE MARKET HAS NOT OPENED YET:
+This briefing is written BEFORE the US market opens. The US market opens at 16:30 Israel time.
+- You MAY use 'היום' to refer to today's date (e.g., 'היום מתפרסמים נתוני תביעות אבטלה').
+- You MAY use 'הבוקר' for overnight news and pre-market data (e.g., 'החוזים העתידיים נסחרים הבוקר בעלייה').
+- ❌ You MUST NOT describe the US market itself as already open, already trading, or having reacted.
+- ❌ FORBIDDEN phrases: 'השוק נפתח הבוקר לסנטימנט...', 'המסחר התנהל...', 'המדד פתח בעלייה', 'המשקיעים הגיבו ב...'
+- ✅ REQUIRED phrases: 'השוק צפוי להיפתח...', 'עם פתיחת המסחר...', 'המשקיעים יעקבו אחר...', 'התגובה הצפויה...'
+- Futures trading is pre-market and CAN be described in present tense ('החוזים נסחרים בעלייה'). The cash market cannot.
+- When writing the 'שורה תחתונה', assume the cash market has NOT opened yet. Use future tense for all market activity."""
             else:
                 trading_status = f"IMPORTANT: This script runs on {date_str} ({day_name}) but the briefing is for the NEXT trading day: {title_date_str} ({title_day_name}). Do NOT use 'היום' or 'הבוקר' — use 'ביום {title_day_name}' or 'בפתיחת המסחר ביום {title_day_name}' instead. Do NOT mention futures or pre-market data as if they are live right now — they are not available yet."
         else:
@@ -603,9 +613,9 @@ Include 7-12 bullets in section 1. Topics:
 6. NEW overnight company news, analyst upgrades/downgrades.
 7. Commodity/currency moves that signal market direction.
 
-Section 2 ("שורה תחתונה"): 4-5 sentences.
-- Same-day trading session: Start with the dominant theme for today's session. Key risk, scenario that changes the picture, level/event to watch.
-- Prepared in advance (Sunday for Monday): Summarize developments since last session, risks building, what to watch when trading resumes on {title_day_name}. Use "עם פתיחת המסחר ביום {title_day_name}" — NOT "היום".
+Section 2 ("שורה תחתונה"): 4-5 sentences. IMPORTANT — THE CASH MARKET HAS NOT OPENED YET:
+- Same-day trading session (before 16:30 Israel time): Describe what is EXPECTED at the open, the key tension awaiting the market, what will dictate direction. Use FUTURE TENSE for all market activity ('צפוי להיפתח', 'יעמדו במוקד', 'התגובה תהיה'). FORBIDDEN: 'השוק נפתח', 'המסחר התנהל', 'המדדים הגיבו'.
+- Prepared in advance (e.g., Sunday for Monday): Summarize developments since last session, risks building, what to watch when trading resumes on {title_day_name}. Use "עם פתיחת המסחר ביום {title_day_name}" — NOT "היום".
 - Target day NOT a trading day: Start with "אין מסחר" and focus on the next session.
 
 {tweets_block}
@@ -1059,6 +1069,62 @@ INDEX_RANGES = {
 PCT_MAX_DAILY = 8.0
 PCT_MAX_WEEKLY = 15.0
 
+# ── Pre-market tense guards for daily_prep ──
+# These apply ONLY when:
+#   1. review_type == 'daily_prep'
+#   2. AND current Israel time is BEFORE US market open (16:30 IL time) or briefing is for a future day
+# Fix past-tense descriptions of market activity that hasn't happened yet.
+PRE_MARKET_TENSE_FIXES = [
+    (r'השוק\s+נפתח\s+הבוקר', 'השוק צפוי להיפתח', 'market has not opened yet'),
+    (r'השווקים\s+נפתחו\s+הבוקר', 'השווקים צפויים להיפתח', 'markets have not opened yet'),
+    (r'המסחר\s+נפתח\s+הבוקר', 'המסחר צפוי להיפתח', 'trading has not opened yet'),
+    (r'המדדים?\s+(?:פתחו?|פותח|נפתחו?)\s+(?:את\s+)?(?:היום|הבוקר|המסחר)', 'המדדים צפויים להיפתח', 'indices have not opened yet'),
+    (r'וול\s+סטריט\s+נפתחה\s+הבוקר', 'וול סטריט צפויה להיפתח', 'Wall Street has not opened yet'),
+    (r'פתיחת\s+המסחר\s+היתה', 'פתיחת המסחר צפויה להיות', 'opening has not happened yet'),
+    (r'המסחר\s+היום\s+התנהל', 'המסחר היום צפוי להתנהל', 'trading has not happened yet'),
+    (r'המשקיעים\s+הגיבו\s+הבוקר', 'המשקיעים צפויים להגיב', 'no reaction yet — market closed'),
+    (r'הגיבו\s+בפתיחה', 'יגיבו בפתיחה', 'no reaction yet — market closed'),
+]
+
+def is_before_us_market_open(now):
+    """Is it currently before 16:30 Israel time on a weekday (= US market hasn't opened)?"""
+    if now.weekday() >= 5:  # Weekend
+        return False
+    minutes = now.hour * 60 + now.minute
+    return minutes < (16 * 60 + 30)
+
+def apply_pre_market_tense_guard(result, review_type):
+    """For daily_prep runs that finish BEFORE US market open, fix any accidental
+    past-tense descriptions of market activity. The cash market hasn't opened yet."""
+    if review_type != "daily_prep":
+        return result
+
+    now = datetime.now(ISR_TZ)
+    if not is_before_us_market_open(now):
+        return result  # Market already open — these phrases could legitimately be true
+
+    def fix_text(text):
+        if not isinstance(text, str):
+            return text
+        for pattern, replacement, desc in PRE_MARKET_TENSE_FIXES:
+            new_text = re.sub(pattern, replacement, text)
+            if new_text != text:
+                print(f"  ✅ Pre-market tense fixed: {desc}")
+                text = new_text
+        return text
+
+    if isinstance(result, dict):
+        if "title" in result:
+            result["title"] = fix_text(result["title"])
+        for section in result.get("sections", []):
+            if "content" in section:
+                if isinstance(section["content"], str):
+                    section["content"] = fix_text(section["content"])
+                elif isinstance(section["content"], list):
+                    section["content"] = [fix_text(i) if isinstance(i, str) else i for i in section["content"]]
+
+    return result
+
 def validate_and_fix(result, review_type):
     warnings = []
     fix_count = 0
@@ -1366,6 +1432,10 @@ def main():
     # Layer 4: Re-enforce structure (defensive — fact-checker sometimes alters section headings)
     print("\n── Layer 4: Final structure enforcement ──")
     result = enforce_structure(result, REVIEW_TYPE, expected_title)
+
+    # Layer 5: Pre-market tense guard (daily_prep only, only if run before US market open)
+    print("\n── Layer 5: Pre-market tense guard ──")
+    result = apply_pre_market_tense_guard(result, REVIEW_TYPE)
     print("── Validation complete ──\n")
 
     # Save
