@@ -478,6 +478,12 @@ CRITICAL — FINANCIAL TERMINOLOGY:
 - A private company planning an IPO is issuing shares — it does NOT have an ETF.
 - SPO = הנפקה משנית, SPAC = חברת רכש ייעודית, M&A = מיזוג ורכישה.
 - Futures = חוזים עתידיים, Options = אופציות, Bonds = אגרות חוב.
+- NASDAQ INDICES — there are TWO different indices, do NOT confuse them:
+  * נאסד"ק 100 (Nasdaq 100 / NDX) — 100 החברות הגדולות בבורסת נאסד"ק (ללא פיננסיים). QQQ עוקב אחרי מדד זה. רמה בסביבות 25,000-26,000 נקודות.
+  * נאסד"ק קומפוזיט (Nasdaq Composite / IXIC) — כל החברות בבורסת נאסד"ק. רמה בסביבות 23,000-24,000 נקודות.
+  * The Finnhub data uses QQQ which tracks the Nasdaq 100. When reporting QQQ % change, label it as "נאסד"ק 100" or "Nasdaq 100".
+  * If you report an index LEVEL (points), verify via Google Search which index the number belongs to. A level of ~24,000 is the Composite, not the 100. A level of ~25,500 is the 100, not the Composite.
+  * NEVER mix them — do not write "נאסד"ק 100" and then give the Composite level.
 
 CRITICAL — FACTUAL ACCURACY (ATTRIBUTION):
 - NEVER attribute a product, model, or technology to the wrong company.
@@ -1061,7 +1067,8 @@ TEXT_FIXES = [
 
 INDEX_RANGES = {
     r'(?:S&P\s*500|אס[\-&]?אנד[\-]?פי)\s*[\-–:]\s*([\d,\.]+)': (4000, 8000, 'S&P 500'),
-    r'(?:נסדק|נאסד"ק|Nasdaq)\s*(?:100|הקומפוזיט|Composite)?\s*[\-–:]\s*([\d,\.]+)': (12000, 30000, 'Nasdaq'),
+    r'(?:נסדק|נאסד"ק|Nasdaq)\s*100\s*[\-–:]\s*([\d,\.]+)': (18000, 30000, 'Nasdaq 100'),
+    r'(?:נסדק|נאסד"ק|Nasdaq)\s*(?:קומפוזיט|Composite)\s*[\-–:]\s*([\d,\.]+)': (15000, 28000, 'Nasdaq Composite'),
     r'(?:דאו\s*ג\'?ונס|Dow\s*Jones?|DJIA)\s*[\-–:]\s*([\d,\.]+)': (30000, 55000, 'Dow Jones'),
     r'(?:ראסל|Russell)\s*2000\s*[\-–:]\s*([\d,\.]+)': (1500, 3500, 'Russell 2000'),
 }
