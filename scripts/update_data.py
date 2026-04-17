@@ -943,8 +943,8 @@ def enforce_structure(result, review_type, expected_title):
         print("  ⚠️ enforce_structure: result is not a dict — returning unchanged")
         return result
 
-    # Events uses a different structure — no enforcement needed here
-    if review_type == "events":
+    # Events and live_news use a different structure — no enforcement needed
+    if review_type in ("events", "live_news"):
         return result
 
     first_heading = EXPECTED_FIRST_HEADING.get(review_type, "נקודות מרכזיות")
