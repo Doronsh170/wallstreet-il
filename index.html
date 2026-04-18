@@ -192,7 +192,9 @@
     }
 
     function formatHebrewDate(dateStr) {
+      if (!dateStr) return 'טרם עודכן';
       const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return 'טרם עודכן';
       const days = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
       const months = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
       return `יום ${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
@@ -344,7 +346,10 @@
         }
         if (siteData.events?.lastUpdated) {
           const el = document.getElementById('eventsDate');
-          if (el) el.textContent = `עודכן: ${new Date(siteData.events.lastUpdated).toLocaleString('he-IL')}`;
+          const d = new Date(siteData.events.lastUpdated);
+          if (el) el.textContent = isNaN(d.getTime())
+            ? 'טרם עודכן'
+            : `עודכן: ${d.toLocaleString('he-IL')}`;
         }
         if (siteData.liveNews?.date) {
           const el = document.getElementById('liveNewsDate');
