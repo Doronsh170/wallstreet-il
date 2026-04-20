@@ -57,7 +57,7 @@ def fetch_market_data(weekly=False):
         "QQQ": "Nasdaq 100 (QQQ ETF)",
         "DIA": "Dow Jones (DIA ETF)",
         "IWM": "Russell 2000 (IWM ETF)",
-        # Sector ETFs
+        # Sector ETFs — NEW (was missing, causing XLE/XLK/XLY hallucinations)
         "XLE": "Energy Sector (XLE ETF)",
         "XLK": "Technology Sector (XLK ETF)",
         "XLF": "Financials Sector (XLF ETF)",
@@ -212,6 +212,8 @@ def fetch_economic_data(days_back=1, days_forward=0):
             if e.get("country", "") != "US":
                 continue
             actual = e.get("actual")
+            if actual is None:
+                continue
             event_name = e.get("event", "")
             estimate = e.get("estimate")
             prev = e.get("prev")
@@ -219,35 +221,22 @@ def fetch_economic_data(days_back=1, days_forward=0):
             impact = e.get("impact", "")
             date = e.get("time", "")[:10]
 
-            # For forward-looking reviews, we want scheduled events (actual=None is fine)
-            # For backward-looking, we only want events with actuals
-            if days_forward == 0 and actual is None:
-                continue
-
-            if actual is not None:
-                line = f"  {date} | {event_name}: actual={actual}{unit}"
-                if estimate is not None:
-                    line += f", forecast={estimate}{unit}"
-                if prev is not None:
-                    line += f", previous={prev}{unit}"
-            else:
-                line = f"  {date} | {event_name}: SCHEDULED"
-                if estimate is not None:
-                    line += f", forecast={estimate}{unit}"
-                if prev is not None:
-                    line += f", previous={prev}{unit}"
+            line = f"  {date} | {event_name}: actual={actual}{unit}"
+            if estimate is not None:
+                line += f", forecast={estimate}{unit}"
+            if prev is not None:
+                line += f", previous={prev}{unit}"
             if impact:
                 line += f" [{impact} impact]"
             us_events.append(line)
-            print(f"  Econ: {event_name} (actual={actual}, est={estimate})")
+            print(f"  Econ: {event_name} = {actual}{unit} (est: {estimate})")
 
         if not us_events:
-            print("  No relevant US economic events found")
+            print("  No US economic events with actual values found")
             return ""
 
-        header = "VERIFIED US ECONOMIC DATA (released)" if days_forward == 0 else "SCHEDULED US ECONOMIC CALENDAR (upcoming)"
         return "\n".join([
-            f"\n══ {header} (from Finnhub — these are FACTS, you MUST include them) ══",
+            "\n══ VERIFIED US ECONOMIC DATA (from Finnhub — these are FACTS, you MUST include them) ══",
             *us_events,
             "INSTRUCTIONS FOR USING THIS DATA:",
             "- Every data point above MUST appear in the review — do NOT skip any.",
@@ -304,12 +293,6 @@ Do NOT skip Core CPI if headline CPI was released — they are equally important
 ══ SCHEDULED DATA CHECK ══
 Use Google Search to find what US economic data is scheduled for release on {date_str}.
 Include the release time in Israel time and what the market consensus/forecast is.
-══════════════════════════════════\n"""
-    elif review_type == "weekly_prep":
-        return f"""
-══ SCHEDULED DATA CHECK ══
-Use Google Search to find ALL major US economic data SCHEDULED for release during the week of {week_range if week_range else date_str}.
-For each: day of week, release time in Israel time, consensus forecast, and previous reading.
 ══════════════════════════════════\n"""
     return ""
 
@@ -390,7 +373,8 @@ def fetch_tweets():
 # ══════════════════════════════════════════════════════════════
 
 def get_prior_review_context(review_type, data):
-    """Inject yesterday's/last week's review so Gemini doesn't repeat the same news."""
+    """Inject yesterday's/last week's review so Gemini doesn't repeat the same news.
+    This is the fix for: 'daily_prep keeps summarizing what was already in daily_summary'."""
     if review_type == "daily_prep":
         prior = data.get("dailySummary")
         if prior and prior.get("sections"):
@@ -444,8 +428,76 @@ The text below was published before today's trading session. Reference it to res
     return ""
 
 # ══════════════════════════════════════════════════════════════
-# TIME CONVERSION (US-IL)
+# PROMPTS
 # ══════════════════════════════════════════════════════════════
+
+SHARED_RULES = """Rules:
+- Write ONLY in Hebrew. Use English only for tickers ($AAPL), index names (S&P 500), and well-known financial terms in parentheses on first use only.
+- Be specific: every claim must include a number, percentage, or ticker. Never write vague statements like "the market had an interesting week".
+- Do NOT repeat the same information across sections. Each section must contain NEW content.
+- Do NOT mention the same ticker or company in multiple separate bullets. If a company has multiple news items, combine them into ONE bullet.
+- No buy/sell recommendations.
+- Start each section directly with the key fact. No generic opening sentences.
+- Output pure JSON only, no backticks, no explanations.
+
+CRITICAL — KEY MARKET DATA (MANDATORY VERIFICATION):
+- If VERIFIED MARKET DATA from Finnhub API is provided above the tweets, you MUST use those numbers for index performance (% change). Do NOT override them with numbers from tweets or from memory.
+- Use the verified % changes as-is. For exact index point levels, gold price, oil price, and VIX level: ALWAYS use Google Search. Do NOT calculate them from ETF prices.
+- You MUST verify via Google Search the current prices of: Brent crude oil, WTI crude oil, gold, and any other commodity you mention.
+- If a tweet states a price that seems extreme or unusual, you MUST verify it via Google Search before including it.
+- NEVER trust a single tweet for major price data. Always cross-reference.
+- NEVER write vague descriptions like "the market closed in green territory" or "mixed trading" without exact numbers.
+- NEVER claim an index or stock is at an "all-time high" (שיא / שיא כל הזמנים) unless you verify it via Google Search.
+
+CRITICAL — SECTOR PERFORMANCE (NEW RULE):
+- For sector ETF performance (XLE/XLK/XLF/XLY/XLV/XLI/XLP/XLU), use ONLY the percentages provided in the Finnhub verified data above.
+- If the Finnhub data does not include a specific sector, do NOT invent a number. Either omit it or use Google Search to verify.
+- NEVER write a specific sector percentage without a source — this is a common hallucination.
+
+CRITICAL — MAJOR ECONOMIC DATA (DO NOT MISS):
+- Use Google Search to check if any major US economic data was released today: CPI, PPI, NFP, GDP, Jobless Claims, ISM PMI, Consumer Confidence, Retail Sales, FOMC minutes/decision.
+- If major data WAS released today, it MUST appear in the review — even if no tweet mentions it. This is non-negotiable.
+- CPI and NFP are the two most important data releases. Missing them from a daily review is a critical failure.
+- When CPI is mentioned, ALWAYS report BOTH headline CPI AND Core CPI (excluding food and energy).
+- When mentioning economic data, ALWAYS include: actual % (monthly AND annual), comparison to forecast, comparison to previous. Vague descriptions without numbers are unacceptable.
+
+CRITICAL — DATA ACCURACY:
+- EVERY number in the review must come from one of these sources: (1) Finnhub verified data above, (2) a specific tweet, or (3) Google Search verification.
+- NEVER invent, estimate, or recall prices from memory. If you cannot point to a source, do NOT include the number.
+- For the 10-year Treasury yield: verify via Google Search. Do NOT estimate from TLT.
+- For commodity absolute prices (oil $/barrel, gold $/oz): verify via Google Search — do NOT estimate from ETF prices.
+- If a number from a tweet contradicts the Finnhub verified data, the Finnhub data is correct — the tweet is wrong.
+- Getting a number wrong destroys credibility. When in doubt, omit.
+
+CRITICAL — CONSISTENCY:
+- The "שורה תחתונה" paragraph MUST be consistent with the bullet points above it.
+- Read your own bullets before writing the bottom line.
+
+CRITICAL — FINANCIAL TERMINOLOGY:
+- Use precise Hebrew financial terms. IPO (הנפקה ראשונית לציבור) is NOT the same as ETF (תעודת סל).
+- A private company planning an IPO is issuing shares — it does NOT have an ETF.
+- SPO = הנפקה משנית, SPAC = חברת רכש ייעודית, M&A = מיזוג ורכישה.
+- Futures = חוזים עתידיים, Options = אופציות, Bonds = אגרות חוב.
+- NASDAQ INDICES — there are TWO different indices, do NOT confuse them:
+  * נאסד"ק 100 (Nasdaq 100 / NDX) — 100 החברות הגדולות בבורסת נאסד"ק (ללא פיננסיים). QQQ עוקב אחרי מדד זה. רמה בסביבות 25,000-26,000 נקודות.
+  * נאסד"ק קומפוזיט (Nasdaq Composite / IXIC) — כל החברות בבורסת נאסד"ק. רמה בסביבות 23,000-24,000 נקודות.
+  * The Finnhub data uses QQQ which tracks the Nasdaq 100. When reporting QQQ % change, label it as "נאסד"ק 100" or "Nasdaq 100".
+  * If you report an index LEVEL (points), verify via Google Search which index the number belongs to. A level of ~24,000 is the Composite, not the 100. A level of ~25,500 is the 100, not the Composite.
+  * NEVER mix them — do not write "נאסד"ק 100" and then give the Composite level.
+
+CRITICAL — FACTUAL ACCURACY (ATTRIBUTION):
+- NEVER attribute a product, model, or technology to the wrong company.
+- Claude is made by ANTHROPIC, not Amazon/AWS. ChatGPT is by OPENAI, not Microsoft. Gemini is by GOOGLE.
+- A product available ON a platform is NOT made BY that platform.
+
+CRITICAL — CURRENT POLITICAL LEADERS:
+- Donald Trump is the CURRENT President of the United States (inaugurated January 2025). He is NOT a former president.
+- Write "הנשיא טראמפ" or "נשיא ארה\"ב טראמפ" — NEVER "הנשיא לשעבר".
+
+CRITICAL — US-ISRAEL TIME CONVERSION:
+- US market opens at 9:30 AM ET, closes at 4:00 PM ET.
+- To convert US Eastern Time to Israel time, use the offset provided below.
+- NEVER guess the time offset — use ONLY the value calculated for today."""
 
 def get_us_israel_offset(now):
     year = now.year
@@ -485,17 +537,32 @@ Key times in Israel time today:
 - US market close: {convert(16,0)} שעון ישראל
 USE ONLY THESE TIMES. Do NOT calculate your own offset."""
 
-# ══════════════════════════════════════════════════════════════
-# PROMPTS
-# ══════════════════════════════════════════════════════════════
+# ── Output format block — uniform across all review types ──
+def get_output_format_block(first_heading, expected_title):
+    """Standard, rigid output-format spec. This is what fixes the '3 sections instead of 2' bug
+    and the 'bottom line never gets special styling' bug."""
+    return f"""
+CRITICAL — OUTPUT FORMAT (MANDATORY, NOT NEGOTIABLE):
+- Output EXACTLY 2 sections in the "sections" array. Not 1, not 3, not 4. EXACTLY 2.
+- Section 1: heading MUST be EXACTLY "{first_heading}" (no variations, no emojis, no added words).
+- Section 2: heading MUST be EXACTLY "שורה תחתונה" (no variations).
+- The "title" field MUST be EXACTLY: "{expected_title}"
+- Section 1 "content": a list of bullet points, each on its own line, each starting with "* " (asterisk + space).
+- Each bullet: "* Short topic label: one concise analytical sentence with numbers."
+- Section 2 "content": a flowing paragraph (4-6 sentences). NO bullets in section 2.
+- Do NOT use <b>, <strong>, **, ■, 📍, or any HTML/markdown formatting inside content.
+- Do NOT add extra sections. If you are tempted to add a third section, MERGE that content into section 1 as more bullets.
+"""
 
 def get_prompt(tweets, review_type, date_str, day_name, title_date_str=None, title_day_name=None,
-               week_range=None, is_trading=True, market_data="", prior_context="", expected_title="",
-               window_start=None):
+               week_range=None, is_trading=True, market_data="", prior_context="", expected_title=""):
     if not title_date_str:
         title_date_str = date_str
     if not title_day_name:
         title_day_name = day_name
+
+    first_heading = EXPECTED_FIRST_HEADING.get(review_type, "נקודות מרכזיות")
+    format_block = get_output_format_block(first_heading, expected_title)
 
     tweets_block = f"Source tweets/posts from X (Twitter) — date: {date_str}:\n{tweets}"
     if market_data:
@@ -507,9 +574,6 @@ def get_prompt(tweets, review_type, date_str, day_name, title_date_str=None, tit
     time_block = get_time_conversion_block(dt_class.now(ISR_TZ))
     tweets_block = time_block + "\n" + tweets_block
 
-    # ══════════════════════════════════════════════════════════════
-    # daily_prep
-    # ══════════════════════════════════════════════════════════════
     if review_type == "daily_prep":
         is_same_day = (date_str == title_date_str)
         if is_trading:
@@ -517,270 +581,158 @@ def get_prompt(tweets, review_type, date_str, day_name, title_date_str=None, tit
                 trading_status = """The briefing is for TODAY — a regular trading day.
 
 ⚠️ CRITICAL TENSE RULE — THE MARKET HAS NOT OPENED YET:
-This briefing is written BEFORE the US market opens (16:30 Israel time).
-- You MAY use 'היום' to refer to today's date.
-- You MAY use 'הבוקר' for overnight news and pre-market data.
+This briefing is written BEFORE the US market opens. The US market opens at 16:30 Israel time.
+- You MAY use 'היום' to refer to today's date (e.g., 'היום מתפרסמים נתוני תביעות אבטלה').
+- You MAY use 'הבוקר' for overnight news and pre-market data (e.g., 'החוזים העתידיים נסחרים הבוקר בעלייה').
 - ❌ You MUST NOT describe the US market itself as already open, already trading, or having reacted.
 - ❌ FORBIDDEN phrases: 'השוק נפתח הבוקר לסנטימנט...', 'המסחר התנהל...', 'המדד פתח בעלייה', 'המשקיעים הגיבו ב...'
 - ✅ REQUIRED phrases: 'השוק צפוי להיפתח...', 'עם פתיחת המסחר...', 'המשקיעים יעקבו אחר...', 'התגובה הצפויה...'
-- Futures trading is pre-market and CAN be described in present tense ('החוזים נסחרים בעלייה'). The cash market cannot."""
+- Futures trading is pre-market and CAN be described in present tense ('החוזים נסחרים בעלייה'). The cash market cannot.
+- When writing the 'שורה תחתונה', assume the cash market has NOT opened yet. Use future tense for all market activity."""
             else:
-                trading_status = f"IMPORTANT: This script runs on {date_str} ({day_name}) but the briefing is for the NEXT trading day: {title_date_str} ({title_day_name}). Do NOT use 'היום' or 'הבוקר' — use 'ביום {title_day_name}' or 'בפתיחת המסחר ביום {title_day_name}' instead. Do NOT mention futures or pre-market data as if they are live right now."
+                trading_status = f"IMPORTANT: This script runs on {date_str} ({day_name}) but the briefing is for the NEXT trading day: {title_date_str} ({title_day_name}). Do NOT use 'היום' or 'הבוקר' — use 'ביום {title_day_name}' or 'בפתיחת המסחר ביום {title_day_name}' instead. Do NOT mention futures or pre-market data as if they are live right now — they are not available yet."
         else:
             trading_status = f"The target date {title_date_str} is NOT a trading day (weekend or US holiday). State this clearly in the first bullet."
-
-        return f"""Summarize in bullets what investors must know before the market opens today on Wall Street, based on the source posts from X provided below.
+        return f"""You are a senior Wall Street market analyst writing a PRE-MARKET briefing in Hebrew.
 
 DATES:
 - Script run date: {date_str} ({day_name})
 - Briefing target date: {title_date_str} ({title_day_name})
 - {trading_status}
 
-RULES:
-- Output in Hebrew. Use English only for tickers ($AAPL), index names (S&P 500), and financial terms in parentheses on first use.
-- Source hierarchy: (1) Finnhub verified data above, (2) the X posts below, (3) Google Search for verification. Do NOT invent items that have no source.
-- Forward-looking only. Do NOT include yesterday's index performance, closing levels, or any backward-looking data.
-- Do not repeat items already covered in the prior_context block above.
-- Every bullet needs specifics: a number, %, ticker, or Israel time. No vague claims.
-- Combine related items about the same company into one bullet.
-- No buy/sell recommendations.
-- Output pure JSON only — no backticks, no explanations.
+CRITICAL — THIS IS A FORWARD-LOOKING BRIEFING, NOT A SUMMARY:
+- This is an "הכנה ליום מסחר" — what investors need to know BEFORE the market opens.
+- DO NOT include yesterday's index performance, closing levels, or any backward-looking data. ZERO.
+- DO NOT repeat news or events that already appeared in the prior context block above.
+- ALL bullets must be FORWARD-LOOKING or about NEW overnight developments.
 
-DATA ACCURACY:
-- For % changes on indices / ETFs / sectors: use ONLY the Finnhub verified data above. Never override with memory or tweets.
-- For exact index point levels, oil & gold $/unit prices, VIX level, 10Y yield: verify via Google Search. Do NOT estimate from ETF prices.
-- For tweet-sourced numbers that look extreme or unusual: cross-check via Google Search before including.
-- When reporting economic data: always include actual, forecast, and previous. CPI: always include BOTH headline and core.
-- Never claim an all-time high without Google Search verification.
-- If a number cannot be verified: omit it.
-- Do not attribute products to the wrong company (e.g. Claude is by Anthropic, not AWS; ChatGPT by OpenAI; Gemini by Google).
+{SHARED_RULES}
 
-US-ISRAEL TIME:
-Use ONLY the offsets in the time_block above. Never calculate your own offset.
+{format_block}
 
-OUTPUT FORMAT (MANDATORY):
-- Output EXACTLY 1 section in the "sections" array.
-- Section heading MUST be EXACTLY "נקודות מרכזיות" (no variations, no emojis).
-- The "title" field MUST be EXACTLY: "{expected_title}"
-- "content": a list of bullet points, each on its own line starting with "* " (asterisk + space).
-- Each bullet: "* Short topic label: one concise analytical sentence with numbers."
-- Do NOT use <b>, <strong>, **, or any HTML/markdown formatting inside content.
-- Do NOT add a "שורה תחתונה" section, a summary paragraph, or any second section.
+Include 7-12 bullets in section 1. Topics:
+1. If the briefing is for a future date, first bullet states when trading resumes.
+2. Pre-market/futures sentiment ONLY if the briefing is for today.
+3. Scheduled economic data for the target day (Israel times + consensus forecast).
+4. Expected earnings reports today.
+5. NEW overnight geopolitical developments.
+6. NEW overnight company news, analyst upgrades/downgrades.
+7. Commodity/currency moves that signal market direction.
 
-COVERAGE — include 8-14 bullets in priority order:
-1. Scheduled US economic data today: Israel time + consensus forecast + previous.
-2. Earnings reports scheduled today (pre-open or after-close).
-3. NEW overnight developments: geopolitics, regulatory actions, major company news, analyst upgrades/downgrades.
-4. Pre-market movers (>3% gap) — only if the catalyst is clear.
-5. Commodity / FX / yield moves signaling macro positioning.
-6. Fed speakers or secondary catalysts.
-If today has no major catalyst, state this explicitly in the first bullet ("יום דל קטליזטורים — המוקד יהיה ...").
+Section 2 ("שורה תחתונה"): 4-5 sentences. IMPORTANT — THE CASH MARKET HAS NOT OPENED YET:
+- Same-day trading session (before 16:30 Israel time): Describe what is EXPECTED at the open, the key tension awaiting the market, what will dictate direction. Use FUTURE TENSE for all market activity ('צפוי להיפתח', 'יעמדו במוקד', 'התגובה תהיה'). FORBIDDEN: 'השוק נפתח', 'המסחר התנהל', 'המדדים הגיבו'.
+- Prepared in advance (e.g., Sunday for Monday): Summarize developments since last session, risks building, what to watch when trading resumes on {title_day_name}. Use "עם פתיחת המסחר ביום {title_day_name}" — NOT "היום".
+- Target day NOT a trading day: Start with "אין מסחר" and focus on the next session.
 
 {tweets_block}
 
-Output ONLY a JSON object with keys: title, date, sections."""
+Output ONLY a JSON object with keys: title, date, sections. No other text."""
 
-    # ══════════════════════════════════════════════════════════════
-    # daily_summary
-    # ══════════════════════════════════════════════════════════════
     elif review_type == "daily_summary":
-        return f"""Summarize in bullets the trading day that concluded today on Wall Street for investors, with an emphasis on all the important events that occurred, based on the provided sources from X.
+        return f"""You are a senior Wall Street market analyst writing a comprehensive end-of-day market wrap in Hebrew. Your goal is not just to report what happened, but to explain WHY it matters and WHAT it signals for investors. Write in PAST TENSE.
 
-DATES:
-- Script run date: {date_str} ({day_name})
-- Summary target date: {title_date_str} ({title_day_name})
+{SHARED_RULES}
 
-RULES:
-- Output in Hebrew. Use English only for tickers ($AAPL), index names (S&P 500), and financial terms in parentheses on first use.
-- Source hierarchy: (1) Finnhub verified data above, (2) the X posts below, (3) Google Search for verification. Do NOT invent items that have no source.
-- Write in PAST TENSE — the trading session has ended.
-- Backward-looking. Describe what happened. Do NOT speculate on tomorrow.
-- Do not repeat items already covered in the prior_context block above.
-- Every bullet needs specifics: a number, %, ticker, or time. No vague claims.
-- Combine related items about the same company into one bullet.
-- No buy/sell recommendations.
-- Output pure JSON only — no backticks, no explanations.
+CRITICAL — ANALYTICAL DEPTH:
+- For index performance: include exact % and point levels, note if it's the best/worst day in X period, explain what drove the move.
+- For macro data released today: actual number, forecast, previous, AND explain the market implication.
+- For stock moves: explain WHY the stock moved, not just the % change.
+- For geopolitical events: explain the transmission mechanism (event → oil → inflation expectations → rate expectations → equity valuations).
+- Connect the dots between different developments — don't just list isolated facts.
 
-DATA ACCURACY:
-- For daily % changes on indices / ETFs / sectors: use ONLY the Finnhub verified data above. These are authoritative — never override with tweets or memory.
-- For exact index closing point levels, oil & gold $/unit prices, VIX level, 10Y yield: verify via Google Search. Do NOT estimate from ETF prices.
-- For tweet-sourced numbers that look extreme or unusual: cross-check via Google Search before including.
-- When reporting economic data: always include actual, forecast, and previous. CPI: always include BOTH headline and core.
-- Never claim an all-time high or record low without Google Search verification.
-- If a number cannot be verified: omit it.
-- Do not attribute products to the wrong company (e.g. Claude is by Anthropic, not AWS; ChatGPT by OpenAI; Gemini by Google).
+{format_block}
 
-US-ISRAEL TIME:
-Use ONLY the offsets in the time_block above. Never calculate your own offset.
+Include 7-12 bullets in section 1, ordered by market impact:
+1. Index performance (S&P 500, Nasdaq, Dow with %, point levels, context).
+2. Macro data released today with FULL numbers (actual vs forecast vs previous) and market reaction.
+3. Key market-moving events: geopolitics, Fed comments, trade news — with cause-and-effect.
+4. Commodities and currencies: oil, gold, Bitcoin, VIX — with % and explanation.
+5. Notable stock moves with WHY ($TICKER +/- %, what caused it).
+6. Sector rotation (using ONLY Finnhub-provided sector ETF data) or institutional activity if relevant.
 
-ANALYTICAL DEPTH — every bullet must answer:
-(a) WHAT happened (with specific numbers).
-(b) WHY it happened (catalyst or cause).
-(c) SO WHAT — the market implication or broader signal.
-A bullet that only reports a fact without explanation is insufficient.
-
-OUTPUT FORMAT (MANDATORY):
-- Output EXACTLY 1 section in the "sections" array.
-- Section heading MUST be EXACTLY "סיכום המסחר" (no variations, no emojis).
-- The "title" field MUST be EXACTLY: "{expected_title}"
-- "content": a list of bullet points, each on its own line starting with "* " (asterisk + space).
-- Each bullet: "* Short topic label: one concise analytical sentence with numbers."
-- Do NOT use <b>, <strong>, **, or any HTML/markdown formatting.
-- Do NOT add a "שורה תחתונה" section, a summary paragraph, or any second section.
-
-COVERAGE — include 8-14 bullets in priority order:
-1. Index performance (MANDATORY first bullet): S&P 500, Nasdaq, Dow, Russell 2000 — daily % from Finnhub + closing point levels (Google Search for the levels).
-2. Sector rotation: leading and lagging sectors using ONLY the Finnhub XLE/XLK/XLF/XLY/XLV/XLI/XLP/XLU % data.
-3. Macro data released today: actual vs forecast vs previous, with market reaction.
-4. Top stock movers today ($TICKER +/- %, with the specific catalyst that drove the move).
-5. Earnings reports that moved stocks today.
-6. Commodities: oil, gold, Bitcoin — % changes and the catalyst.
-7. Yields & FX: 10Y yield, DXY — direction + what drove them.
-8. Fed commentary, geopolitical events, trade news that affected the session.
-9. Notable after-hours movers if a major company reported after close.
+Section 2 ("שורה תחתונה"): 4-5 sentences.
+1. The key narrative of today's session — what was the dominant force.
+2. What shifted in investor positioning (risk-on/off, sector preference, rate expectations).
+3. The key tension or contradiction in today's price action.
+4. What specific data, event, or level to watch tomorrow and why it matters.
 
 {tweets_block}
 
-Output ONLY a JSON object with keys: title, date, sections."""
+Output ONLY a JSON object with keys: title, date, sections. No other text."""
 
-    # ══════════════════════════════════════════════════════════════
-    # weekly_prep
-    # ══════════════════════════════════════════════════════════════
     elif review_type == "weekly_prep":
-        return f"""Summarize in bullets what investors must know before the start of the new trading week in Wall Street, including upcoming key events, important earnings reports, and everything essential for investors to know, based on the sources from X.
+        return f"""You are a senior Wall Street strategist writing a weekly outlook for Israeli investors in Hebrew.
 
-DATES:
-- Script run date: {date_str} ({day_name})
-- Target trading week: {week_range}
+Your task: Summarize what investors need to know ahead of the trading week of {week_range if week_range else date_str} on Wall Street. Write in FUTURE TENSE.
 
-RULES:
-- Output in Hebrew. Use English only for tickers ($AAPL), index names (S&P 500), and financial terms in parentheses on first use.
-- Source grounding: CONTENT (events, companies, earnings, narratives) must come from (a) the X posts below, or (b) the economic calendar provided in market_data above. Do NOT invent events, companies, or catalysts not represented in these inputs. Do NOT use Google Search to introduce new events.
-- Google Search is allowed ONLY to verify specific times, consensus forecasts, or earnings dates for items already in the X posts or calendar.
-- Write in FUTURE TENSE — the week has not started.
-- Forward-looking ONLY. Do NOT include last week's index performance, closing levels, or any backward-looking data. The weekly_summary covers that.
-- Do not repeat items already covered in the prior_context block above.
-- Every bullet needs specifics: a day, Israel time, number, %, or ticker. No vague claims.
-- Combine related items about the same company into one bullet.
-- No buy/sell recommendations.
-- Output pure JSON only — no backticks, no explanations.
+CRITICAL — TIME FRAME:
+- This preview covers the trading week {week_range if week_range else date_str} ONLY.
+- Include ONLY events, data releases, and catalysts scheduled for THIS specific week.
+- Do NOT include events from previous weeks or events beyond this week's Friday.
+- Do NOT include last week's index performance or closing levels — there is a separate "סיכום שבועי" for that.
 
-TIME FRAME (STRICT):
-- This preview covers the trading week of {week_range} ONLY.
-- Include ONLY events, data releases, and catalysts scheduled for this specific week.
-- Do NOT include events from the previous week or beyond this week's Friday.
+{SHARED_RULES}
 
-DATA ACCURACY:
-- For scheduled event times: use the Israel time offsets from the time_block above. Never calculate your own offset.
-- For macro consensus/forecast: use the figures from the economic calendar block above, or verify via Google Search if missing.
-- For scheduled earnings dates and pre-open vs after-close timing: verify via Google Search when the X posts are ambiguous.
-- Do NOT attribute products to the wrong company (e.g. Claude is by Anthropic; ChatGPT by OpenAI; Gemini by Google).
-- US holidays during the target week affect scheduling — if NFP or CPI would fall on a holiday, it is typically shifted. Verify.
+{format_block}
 
-ANALYTICAL DEPTH — every bullet must answer:
-(a) WHAT is scheduled (day, Israel time, consensus if macro, EPS/revenue consensus if earnings).
-(b) WHY it matters (what position or narrative is at stake).
-(c) SO WHAT — what print/outcome would shift market pricing, Fed odds, or sector positioning.
+Include 8-14 bullets in section 1, ALL forward-looking:
+1. Key events coming THIS week: Fed decisions, economic data (NFP, CPI, PMI, GDP, PPI), earnings reports, trade/tariff deadlines, geopolitical developments.
+2. For each event: specific day and Israel time when known.
+3. Geopolitical risks and what to watch for.
+4. Notable companies expected to report earnings this week.
+Do NOT include any bullets about last week's performance. Zero backward-looking data.
 
-OUTPUT FORMAT (MANDATORY):
-- Output EXACTLY 1 section in the "sections" array.
-- Section heading MUST be EXACTLY "נקודות מרכזיות לשבוע הקרוב" (no variations, no emojis).
-- The "title" field MUST be EXACTLY: "{expected_title}"
-- "content": a list of bullet points, each on its own line starting with "* " (asterisk + space).
-- Each bullet: "* Short topic label: one concise analytical sentence with numbers."
-- Do NOT use <b>, <strong>, **, or any HTML/markdown formatting.
-- Do NOT add a "שורה תחתונה" section or any second section.
-
-COVERAGE — include 10-14 bullets in priority order:
-1. The dominant catalyst of the week (MANDATORY first bullet): the single most important scheduled event — Fed decision > major macro print > mega-cap earnings — with day, Israel time, consensus, and what is priced in.
-2. Economic calendar for the week: other major data releases (NFP, CPI, PPI, PMI, GDP, jobless claims, retail sales, FOMC minutes) with day, Israel time, consensus, and previous.
-3. Earnings calendar for the week: the most important names scheduled to report, with day (pre-open / after-close) and EPS/revenue consensus.
-4. Fed speakers scheduled this week: day, Israel time, and why the speech matters in the current context.
-5. Geopolitical / trade / tariff deadlines falling this week.
-6. Corporate events: investor days, product launches, IPO pricings, options expiries.
-7. Current market pricing: what Fed-funds futures imply for the next rate decision, what options markets imply for key tickers.
-8. Wild cards from the X posts: less obvious catalysts that could move markets.
-If the week has no obvious dominant catalyst, state this explicitly in the first bullet ("שבוע דל קטליזטורים — המוקד יעבור ל...").
+Section 2 ("שורה תחתונה"): 4-5 sentences. Start with the ONE dominant theme. Analyze: what is the market currently pricing in, what could surprise to the upside/downside, what combination of events could trigger a significant move. End with a bullish/bearish scenario framework.
 
 {tweets_block}
 
-Output ONLY a JSON object with keys: title, date, sections."""
+Output ONLY a JSON object with keys: title, date, sections. No other text."""
 
-    # ══════════════════════════════════════════════════════════════
-    # weekly_summary
-    # ══════════════════════════════════════════════════════════════
     elif review_type == "weekly_summary":
-        return f"""Summarize in bullets for investors the past week that concluded today on Wall Street, with an emphasis on the past week's performance, key events that occurred, important earnings reports released, and everything essential for investors to know — based ONLY on the source posts from X provided below.
+        return f"""You are a senior Wall Street strategist writing a comprehensive weekly review for Israeli investors in Hebrew. Write in PAST TENSE.
 
-DATES:
-- Script run date: {date_str} ({day_name})
-- Summary target week: {week_range}
+Your task: Summarize all significant developments on Wall Street over the trading week of {week_range if week_range else date_str}.
 
-RULES:
-- Output in Hebrew. Use English only for tickers ($AAPL), index names (S&P 500), and financial terms in parentheses on first use.
-- Source grounding: CONTENT (events, companies, earnings, narratives) must come from (a) the X posts below, or (b) the economic calendar provided in market_data above. Do NOT invent events, companies, or stories that are not represented in these inputs. Do NOT use Google Search to introduce new events not in the X posts.
-- Authoritative numbers: Use Finnhub WEEKLY PERFORMANCE data above for index / ETF / sector % changes — these override everything else.
-- Google Search is allowed ONLY to verify specific point levels or cross-check extreme-looking numbers from tweets.
-- Write in PAST TENSE — the week has concluded.
-- Backward-looking. Describe what happened this week. Do NOT speculate on next week.
-- Do not repeat items already covered in the prior_context block above.
-- Every bullet needs specifics: a number, %, ticker, or date. No vague claims.
-- Combine related items about the same company into one bullet.
-- No buy/sell recommendations.
-- Output pure JSON only — no backticks, no explanations.
+CRITICAL — TIME FRAME:
+- This summary covers the trading week {week_range if week_range else date_str} ONLY.
+- Include ONLY events, data, and market moves that occurred during THIS specific week.
+- Do NOT include events from the current or upcoming week.
 
-TIME FRAME (STRICT):
-- This summary covers the trading week of {week_range} ONLY.
-- Include ONLY events, data, and market moves that occurred during this specific week.
-- Do NOT include the previous week or the upcoming week.
-
-DATA ACCURACY:
-- For WEEKLY % changes on indices / ETFs / sectors: use ONLY the Finnhub WEEKLY PERFORMANCE data above. NEVER use the daily numbers for the weekly summary.
+CRITICAL — WEEKLY PERFORMANCE:
+- If WEEKLY PERFORMANCE data is provided above, use those % changes for the weekly index performance.
+- Do NOT use the DAILY performance numbers for the weekly summary.
 - Do NOT confuse Friday's daily change with the weekly change.
-- For index point levels (Friday's close): verify via Google Search. Do NOT estimate from ETF prices.
-- For tweet-sourced numbers that look extreme: cross-check via Google Search.
-- When reporting macro data from this week: always include actual, forecast, and previous. CPI: always include BOTH headline and core.
-- Never claim a weekly high/low or record without verification.
-- If a number cannot be verified: omit it.
-- Do not attribute products to the wrong company (e.g. Claude is by Anthropic; ChatGPT by OpenAI; Gemini by Google).
 
-US-ISRAEL TIME:
-Use ONLY the offsets in the time_block above.
+{SHARED_RULES}
 
-ANALYTICAL DEPTH — every bullet must answer:
-(a) WHAT happened (with specific numbers).
-(b) WHY it happened (catalyst or cause).
-(c) SO WHAT — the implication for Fed policy, sector rotation, positioning, or the broader cycle.
-A bullet that only reports a fact without explanation is insufficient.
+CRITICAL — ANALYTICAL DEPTH:
+- For EVERY macro data point: actual, forecast/consensus, comparison to previous, AND what it means for Fed policy and markets.
+- For index performance: weekly % change, mention if best/worst week in X months, leading/lagging sectors.
+- For geopolitical events: explain the market mechanism (oil → inflation → rates → equity valuations).
+- For earnings: note the broader trend for the sector/economy.
+- Always connect the dots.
 
-OUTPUT FORMAT (MANDATORY):
-- Output EXACTLY 1 section in the "sections" array.
-- Section heading MUST be EXACTLY "סיכום השבוע" (no variations, no emojis).
-- The "title" field MUST be EXACTLY: "{expected_title}"
-- "content": a list of bullet points, each on its own line starting with "* " (asterisk + space).
-- Each bullet: "* Short topic label: one concise analytical sentence with numbers."
-- Do NOT use <b>, <strong>, **, or any HTML/markdown formatting.
-- Do NOT add a "שורה תחתונה" section or any second section.
+{format_block}
 
-COVERAGE — include 10-14 bullets in priority order:
-1. Weekly index performance (MANDATORY first bullet): S&P 500, Nasdaq, Dow, Russell 2000 — weekly % from Finnhub WEEKLY data + Friday's closing levels. Note if this was best/worst week in X months.
-2. Sector leaders / laggards for the week: use ONLY the Finnhub weekly % data for XLE/XLK/XLF/XLY/XLV/XLI. Name the rotation theme if present.
-3. Macro data published this week: FULL numbers (actual / forecast / previous) + market reaction for each. CPI headline + core mandatory if released.
-4. Key earnings reports this week: major names, beat/miss on revenue and EPS, stock reaction, and what it signals for the sector.
-5. Top weekly stock movers ($TICKER +/- weekly %, with the specific catalyst).
-6. Commodities: weekly moves in oil (with catalyst), gold, Bitcoin.
-7. Yields & FX: 10Y yield weekly move, DXY direction, rate-cut probability shifts.
-8. Fed commentary and policy signals this week: speeches, minutes, or decisions.
-9. Geopolitical, trade / tariff developments that moved markets this week.
-10. M&A, IPOs, or major corporate actions this week if relevant.
+Include 8-14 bullets in section 1:
+1. Index performance: S&P 500, Nasdaq, Dow, Russell 2000 — weekly % changes, context, leading/lagging sectors.
+2. Macro data published this week with FULL numbers (CPI headline AND core, NFP, claims, sentiment — actuals, forecasts, market reaction).
+3. Key events that moved markets: geopolitics, Fed comments, trade/tariff news — transmission mechanism.
+4. Commodities with context: oil (weekly change + why), gold, Bitcoin.
+5. Notable company news, earnings, M&A — combined where related.
+6. Earnings season outlook or institutional positioning.
+
+Section 2 ("שורה תחתונה"): 5-6 sentences.
+1. Dominant narrative of the week and what drove it.
+2. Shift in investor positioning.
+3. Key tension/contradiction in the market.
+4. 2-3 specific risks that could reverse the trend.
+5. What to watch next week and why it matters.
 
 {tweets_block}
 
-Output ONLY a JSON object with keys: title, date, sections."""
+Output ONLY a JSON object with keys: title, date, sections. No other text."""
 
-    # ══════════════════════════════════════════════════════════════
-    # events — UNCHANGED
-    # ══════════════════════════════════════════════════════════════
     elif review_type == "events":
         return f"""You are a financial calendar editor creating an economic events calendar in Hebrew.
 
@@ -801,62 +753,37 @@ Output JSON format — THIS IS DIFFERENT FROM OTHER REVIEWS (uses "items", not "
 
 Event types: macro data (NFP, CPI, PPI, PMI, GDP, jobless claims), Fed rate decisions and Fed speakers, major earnings (mega-cap), options/futures expiry, Treasury auctions, geopolitical deadlines."""
 
-    # ══════════════════════════════════════════════════════════════
-    # live_news
-    # ══════════════════════════════════════════════════════════════
     elif review_type == "live_news":
         now_time = datetime.now(ISR_TZ).strftime('%H:%M')
-        return f"""Summarize in bullets the important Wall Street events from the PAST HOUR for investors, based on the sources from X, with an emphasis on what is happening right now.
+        return f"""You are a Wall Street news desk editor delivering a real-time news update in Hebrew.
 
 CURRENT DATE AND TIME: {date_str} at {now_time} Israel time.
-WINDOW START: {window_start} Israel time (60 minutes ago).
 
-RULES:
-- Output in Hebrew. Use English only for tickers ($AAPL), index names (S&P 500), and financial terms in parentheses on first use.
-- Source grounding: CONTENT must come from the X posts below. Do NOT invent events. Do NOT use Google Search to introduce new stories.
-- Google Search is allowed ONLY to verify specific numbers, names, or times from the X posts.
-- TENSE:
-  * PRESENT tense for events unfolding right now ("Powell נואם כעת").
-  * PAST tense for events that happened within the past hour ("Apple הודיעה לפני 20 דקות").
-  * NEVER future tense — scheduled events do not belong here.
-- Every bullet must include a specific Israel time within the past-hour window.
-- No buy/sell recommendations.
-- Output pure JSON only — no backticks, no explanations.
+Your task: Rapid-fire summary of the most important events happening RIGHT NOW that are relevant to Wall Street investors. This is a "מה קורה עכשיו" update — just the news, no market data or index levels.
 
-STRICT WINDOW — PAST 60 MINUTES ONLY:
-- Include ONLY events that occurred between {window_start} and {now_time} Israel time today.
-- This is NOT a daily summary. Do NOT include events from earlier today, from overnight, or from yesterday.
-- Anything older than 60 minutes belongs in daily_summary or daily_prep — not here.
-- Do NOT pad. If only 2 events happened in the past hour, output 2 bullets. If only 1, output 1.
-- If the past hour was quiet, output ONE bullet: "שעה שקטה — אין אירועים מהותיים ב-60 הדקות האחרונות". Do NOT reach back to fill.
+CRITICAL — ONLY EVENTS THAT HAVE ALREADY HAPPENED:
+- Only include events that occurred BEFORE {now_time} today.
+- If economic data is scheduled for later today, do NOT present it as "already released".
+- This is a snapshot of NOW — not a summary of recent days.
 
-CONTENT SCOPE:
-- News and events only — no index levels, % changes, commodity prices, or VIX.
-- Do not attribute products to the wrong company (Claude is by Anthropic; ChatGPT by OpenAI; Gemini by Google).
+{SHARED_RULES}
 
-US-ISRAEL TIME:
-Use ONLY the offsets in the time_block above.
+{format_block}
 
-OUTPUT FORMAT (MANDATORY):
-- Output EXACTLY 1 section in the "sections" array.
-- Section heading MUST be EXACTLY "חדשות אחרונות".
-- The "title" field MUST be EXACTLY: "{expected_title}"
-- "content": bullets starting with "* ", each formatted as: "* Short label (IL time): one sentence with specifics."
-- No HTML/markdown formatting. No "שורה תחתונה".
+Include 6-10 bullets in section 1 of NEWS AND EVENTS ONLY:
+- Breaking news and developments
+- Geopolitical events affecting markets
+- Notable company news, deals, earnings surprises
+- Fed/central bank comments or actions
+- Regulatory developments
+- Analyst calls or institutional moves
+Do NOT include index levels, % changes, commodity prices, or VIX.
 
-COVERAGE — 0 to 6 bullets from the past 60 minutes only:
-1. Breaking news just reported.
-2. Corporate actions announced in the past hour (M&A, product launches, guidance updates, layoffs, executive changes, SEC filings).
-3. Regulatory or legal developments just announced.
-4. Fed / central bank comments just delivered.
-5. Geopolitical events that just broke.
-6. Analyst calls or institutional moves just published.
-
-Honesty over volume. 2 solid bullets beat 6 padded ones.
+Section 2 ("שורה תחתונה"): 2-3 sentences MAX. Dominant story right now + what to watch in next few hours.
 
 {tweets_block}
 
-Output ONLY a JSON object with keys: title, date, sections."""
+Output ONLY a JSON object with keys: title, date, sections. No other text."""
 
     return ""
 
@@ -951,49 +878,81 @@ def call_gemini(prompt, temperature=0.2):
     raise Exception("call_gemini: exhausted all retries")
 
 # ══════════════════════════════════════════════════════════════
-# POST-PROCESSING — STRUCTURE ENFORCEMENT
+# POST-PROCESSING — STRUCTURE ENFORCEMENT (NEW)
 # ══════════════════════════════════════════════════════════════
 
 _BULLET_CHARS = r'[•■●▪▫◦‣⁃–—]'
 
 def normalize_bullets(text):
-    """Convert mixed bullet styles (•, ■, -, etc.) to `* ` so the HTML renderer picks them up."""
+    """Convert mixed bullet styles (•, ■, -, etc.) to `* ` so the HTML renderer picks them up.
+    This is the fix for the 'wall of text instead of bullets' bug."""
     if not isinstance(text, str) or not text.strip():
         return text
 
     lines = text.split("\n")
     result = []
+    bullet_count = 0
+    non_bullet_lines = []
 
+    # First pass: classify
     for line in lines:
         stripped = line.strip()
         if not stripped:
             result.append("")
             continue
 
+        # Unicode bullets → * 
         converted = re.sub(rf'^{_BULLET_CHARS}\s+', '* ', stripped)
+        # Dash bullets → * 
         converted = re.sub(r'^-\s+', '* ', converted)
-
+        # Keep existing * bullets
         if converted.startswith('* '):
+            bullet_count += 1
             result.append(converted)
         else:
+            # Detect implicit bullets: "$TICKER: ..." or "Topic label: ..." with short label
             if re.match(r'^\$[A-Z]{1,5}\s*:', stripped):
                 result.append('* ' + stripped)
+                bullet_count += 1
             elif re.match(r'^[^\n]{2,35}:\s+\S', stripped) and len(lines) >= 3:
+                # Looks like a sub-heading prefix followed by content, and we have multiple lines
                 result.append('* ' + stripped)
+                bullet_count += 1
             else:
+                non_bullet_lines.append(stripped)
                 result.append(stripped)
 
+    # If we found bullets, return as-is (bullets interleaved with potential intro paragraph)
+    # If we found NO bullets at all, we have a paragraph — leave it alone (HTML will render as <p>)
     return "\n".join(l for l in result if l.strip() or not l)
 
+def debullet(text):
+    """Remove bullet markers from paragraph text (the bottom-line section should be prose)."""
+    if not isinstance(text, str) or not text.strip():
+        return text
+    lines = text.split("\n")
+    cleaned = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        stripped = re.sub(rf'^(\*|\-|{_BULLET_CHARS})\s+', '', stripped)
+        cleaned.append(stripped)
+    # Single paragraph: join with spaces. Multiple paragraphs: join with newline.
+    if len(cleaned) <= 1:
+        return cleaned[0] if cleaned else ""
+    return " ".join(cleaned)
+
 def enforce_structure(result, review_type, expected_title):
-    """Force the Gemini output to match the single-section structure expected by the HTML renderer.
-    All reviews (except events) must have EXACTLY 1 section with bullets — no 'שורה תחתונה'."""
+    """Force the Gemini output to match the structure expected by the HTML renderer.
+    Fixes: wrong titles, 3-section outputs, wrong headings, mixed bullet styles,
+    and the critical 'שורה תחתונה' heading that enables the gold-highlighted box styling."""
 
     if not isinstance(result, dict):
         print("  ⚠️ enforce_structure: result is not a dict — returning unchanged")
         return result
 
-    # events uses a different structure (items array) — no enforcement here
+    # Events uses a different structure — no enforcement needed here
     if review_type == "events":
         return result
 
@@ -1009,39 +968,78 @@ def enforce_structure(result, review_type, expected_title):
     sections = result.get("sections", [])
     if not isinstance(sections, list) or len(sections) == 0:
         print("  ⚠️ enforce_structure: no sections — creating empty structure")
-        result["sections"] = [{"heading": first_heading, "content": ""}]
+        result["sections"] = [
+            {"heading": first_heading, "content": ""},
+            {"heading": "שורה תחתונה", "content": ""},
+        ]
         return result
 
-    # 3. If more than 1 section, consolidate all BULLET content into the first, drop prose paragraphs
-    if len(sections) > 1:
-        print(f"  ✅ Consolidating {len(sections)} sections → 1 (single-section spec)")
-        merged_bullets = []
-        for s in sections:
+    # 3. If more than 2 sections, consolidate
+    if len(sections) > 2:
+        # Pick the section that looks most like a bottom-line paragraph:
+        # prefer sections whose heading mentions "שורה תחתונה"/"סיכום"/"מה זה אומר"/"מבט קדימה",
+        # otherwise prefer the section with the fewest bullets (most prose-like),
+        # otherwise fall back to the last section.
+        def bottom_line_score(s):
+            heading = s.get("heading", "")
+            content = s.get("content", "")
+            if isinstance(content, list):
+                content = "\n".join(content)
+            score = 0
+            for keyword in ["שורה תחתונה", "סיכום", "מבט קדימה", "מה זה אומר", "השלכות", "משמעות"]:
+                if keyword in heading:
+                    score += 100
+            # Prose-like = few bullets, long sentences
+            lines = [l.strip() for l in content.split("\n") if l.strip()]
+            bullet_lines = sum(1 for l in lines if re.match(rf'^(\*|-|\$[A-Z]+:|{_BULLET_CHARS})', l))
+            if bullet_lines <= 1 and len(content) > 100:
+                score += 50
+            # Prefer later sections as tiebreaker
+            return score
+
+        best_idx = max(range(len(sections)), key=lambda i: (bottom_line_score(sections[i]), i))
+        bottom = sections[best_idx]
+        rest = [s for i, s in enumerate(sections) if i != best_idx]
+
+        print(f"  ✅ Consolidating {len(sections)} sections → 2")
+        print(f"     Selected section {best_idx} ('{bottom.get('heading', '')}') as bottom line")
+
+        merged_parts = []
+        for s in rest:
             c = s.get("content", "")
             if isinstance(c, list):
-                c = "\n".join(str(x) for x in c)
-            if not isinstance(c, str) or not c.strip():
-                continue
-            for line in c.split("\n"):
-                stripped = line.strip()
-                if not stripped:
-                    continue
-                # Take only bullet-like lines; prose paragraphs (שורה תחתונה leftovers) are dropped
-                if re.match(rf'^(\*|-|\$[A-Z]{{1,5}}\s*:|{_BULLET_CHARS})', stripped):
-                    merged_bullets.append(stripped)
-        sections = [{"heading": first_heading, "content": "\n".join(merged_bullets)}]
+                c = "\n".join(c)
+            if c and c.strip():
+                merged_parts.append(c.strip())
+        merged = "\n".join(merged_parts)
+        sections = [
+            {"heading": first_heading, "content": merged},
+            bottom,
+        ]
+    elif len(sections) == 1:
+        print("  ⚠️ Only 1 section returned — appending empty bottom line")
+        sections.append({"heading": "שורה תחתונה", "content": ""})
 
-    # 4. Force heading on the single section
+    # 4. Force headings
     original_h0 = sections[0].get("heading", "")
+    original_h1 = sections[1].get("heading", "")
     sections[0]["heading"] = first_heading
+    sections[1]["heading"] = "שורה תחתונה"
     if original_h0 != first_heading:
-        print(f"  ✅ Section heading overridden: '{original_h0}' → '{first_heading}'")
+        print(f"  ✅ Section 1 heading overridden: '{original_h0}' → '{first_heading}'")
+    if original_h1 != "שורה תחתונה":
+        print(f"  ✅ Section 2 heading overridden: '{original_h1}' → 'שורה תחתונה' (enables gold box styling)")
 
-    # 5. Normalize bullets in the content
+    # 5. Normalize content — bullets in section 1, prose in section 2
     c0 = sections[0].get("content", "")
     if isinstance(c0, list):
-        c0 = "\n".join(str(x) for x in c0)
+        c0 = "\n".join(c0)
     sections[0]["content"] = normalize_bullets(c0)
+
+    c1 = sections[1].get("content", "")
+    if isinstance(c1, list):
+        c1 = " ".join(c1)
+    sections[1]["content"] = debullet(c1)
 
     result["sections"] = sections
     return result
@@ -1069,7 +1067,8 @@ TEXT_FIXES = [
 
 INDEX_RANGES = {
     r'(?:S&P\s*500|אס[\-&]?אנד[\-]?פי)\s*[\-–:]\s*([\d,\.]+)': (4000, 8000, 'S&P 500'),
-    r'(?:נסדק|נאסד"ק|Nasdaq)\s*(?:100|הקומפוזיט|Composite)?\s*[\-–:]\s*([\d,\.]+)': (12000, 30000, 'Nasdaq'),
+    r'(?:נסדק|נאסד"ק|Nasdaq)\s*100\s*[\-–:]\s*([\d,\.]+)': (18000, 30000, 'Nasdaq 100'),
+    r'(?:נסדק|נאסד"ק|Nasdaq)\s*(?:קומפוזיט|Composite)\s*[\-–:]\s*([\d,\.]+)': (15000, 28000, 'Nasdaq Composite'),
     r'(?:דאו\s*ג\'?ונס|Dow\s*Jones?|DJIA)\s*[\-–:]\s*([\d,\.]+)': (30000, 55000, 'Dow Jones'),
     r'(?:ראסל|Russell)\s*2000\s*[\-–:]\s*([\d,\.]+)': (1500, 3500, 'Russell 2000'),
 }
@@ -1077,7 +1076,11 @@ INDEX_RANGES = {
 PCT_MAX_DAILY = 8.0
 PCT_MAX_WEEKLY = 15.0
 
-# Pre-market tense guards for daily_prep
+# ── Pre-market tense guards for daily_prep ──
+# These apply ONLY when:
+#   1. review_type == 'daily_prep'
+#   2. AND current Israel time is BEFORE US market open (16:30 IL time) or briefing is for a future day
+# Fix past-tense descriptions of market activity that hasn't happened yet.
 PRE_MARKET_TENSE_FIXES = [
     (r'השוק\s+נפתח\s+הבוקר', 'השוק צפוי להיפתח', 'market has not opened yet'),
     (r'השווקים\s+נפתחו\s+הבוקר', 'השווקים צפויים להיפתח', 'markets have not opened yet'),
@@ -1092,20 +1095,20 @@ PRE_MARKET_TENSE_FIXES = [
 
 def is_before_us_market_open(now):
     """Is it currently before 16:30 Israel time on a weekday (= US market hasn't opened)?"""
-    if now.weekday() >= 5:
+    if now.weekday() >= 5:  # Weekend
         return False
     minutes = now.hour * 60 + now.minute
     return minutes < (16 * 60 + 30)
 
 def apply_pre_market_tense_guard(result, review_type):
     """For daily_prep runs that finish BEFORE US market open, fix any accidental
-    past-tense descriptions of market activity."""
+    past-tense descriptions of market activity. The cash market hasn't opened yet."""
     if review_type != "daily_prep":
         return result
 
     now = datetime.now(ISR_TZ)
     if not is_before_us_market_open(now):
-        return result
+        return result  # Market already open — these phrases could legitimately be true
 
     def fix_text(text):
         if not isinstance(text, str):
@@ -1207,7 +1210,7 @@ def validate_and_fix(result, review_type):
 # ══════════════════════════════════════════════════════════════
 
 def fact_check_with_gemini(result, market_data, review_type):
-    """Flash-based fact check. Runs AFTER enforce_structure so the structure is already correct."""
+    """Flash-based fact check. Runs AFTER enforce_structure so the structure it sees is already correct."""
     review_json = json.dumps(result, ensure_ascii=False, indent=2)
 
     prompt = f"""You are a FACT-CHECKER for a Hebrew financial market review. Your ONLY job is to find and fix factual errors.
@@ -1224,21 +1227,18 @@ YOUR TASK:
 - Fix any factual error (wrong company attribution, wrong political titles, wrong dates, wrong terminology).
 - For sector ETF percentages (XLE/XLK/XLF/XLY/XLV/XLI): if a specific sector number appears in the review that does NOT match the Finnhub data, REMOVE that claim or replace it with a number from the Finnhub data.
 - For 10-year Treasury yield, commodity absolute prices ($/barrel, $/oz), and DXY level: these are NOT in Finnhub. Only keep them if they are clearly reasonable; otherwise remove.
-- DO NOT change the writing style, structure, section count, or section heading.
+- DO NOT change the writing style, structure, section count, or section headings.
 - DO NOT remove content — only fix errors or remove clearly-hallucinated numbers.
-- DO NOT change the "title" field or section heading — those are already enforced.
+- DO NOT change the "title" field or section headings — those are already enforced.
 - If everything is correct, return the review unchanged.
-
-STRUCTURE NOTE:
-- Reviews (except "events") have EXACTLY ONE section named by the review type's designated heading (e.g. "נקודות מרכזיות", "סיכום המסחר", "חדשות אחרונות"). Do NOT add a second section.
-- The content is a bullet list. Do NOT convert it to prose or add a summary paragraph.
 
 COMMON ERRORS:
 - Donald Trump is the CURRENT US President (since Jan 2025). NOT a former president.
 - Claude is by Anthropic, ChatGPT is by OpenAI, Gemini is by Google.
 - IPO ≠ ETF.
+- Contradictions: If bullets say market rose sharply, the bottom line must not say "mixed trading".
 
-OUTPUT: Return the corrected review as valid JSON in EXACTLY the same structure (same title, same single section heading, same number of sections). No backticks, no explanations — pure JSON only."""
+OUTPUT: Return the corrected review as valid JSON in EXACTLY the same structure (same title, same two section headings, same number of sections). No backticks, no explanations — pure JSON only."""
 
     try:
         r = requests.post(
@@ -1371,23 +1371,19 @@ def main():
 
     print(f"Fetched {len(tweets.split(chr(10)+chr(10)))} tweet blocks")
 
-    # ── BUG FIX #2: Finnhub weekly data only for weekly_summary, NOT weekly_prep ──
-    # (weekly_prep is forward-looking — doesn't use last week's % changes)
-    is_weekly = REVIEW_TYPE == "weekly_summary"
+    # Finnhub market data
+    is_weekly = REVIEW_TYPE in ("weekly_summary", "weekly_prep")
     market_data = fetch_market_data(weekly=is_weekly)
 
-    # ── BUG FIX #1: Economic calendar routing ──
-    # weekly_prep must look FORWARD (days_forward=7), not backward
+    # Economic calendar
     if REVIEW_TYPE == "daily_summary":
         econ_data = fetch_economic_data(days_back=1, days_forward=0)
-    elif REVIEW_TYPE == "weekly_summary":
+    elif REVIEW_TYPE in ("weekly_summary", "weekly_prep"):
         econ_data = fetch_economic_data(days_back=7, days_forward=0)
-    elif REVIEW_TYPE == "weekly_prep":
-        econ_data = fetch_economic_data(days_back=0, days_forward=7)
     elif REVIEW_TYPE == "daily_prep":
         econ_data = fetch_economic_data(days_back=1, days_forward=1)
     elif REVIEW_TYPE == "live_news":
-        econ_data = fetch_economic_data(days_back=0, days_forward=0)
+        econ_data = fetch_economic_data(days_back=1, days_forward=0)
     else:
         econ_data = ""
 
@@ -1410,13 +1406,6 @@ def main():
     if prior_context:
         print(f"  Injected prior-review context ({len(prior_context)} chars)")
 
-    # ── BUG FIX #3: Compute 60-minute window start for live_news ──
-    if REVIEW_TYPE == "live_news":
-        window_start = (now - timedelta(minutes=60)).strftime('%H:%M')
-        print(f"  live_news window: {window_start} → {now.strftime('%H:%M')} IL")
-    else:
-        window_start = None
-
     prompt = get_prompt(
         tweets, REVIEW_TYPE, date_str, day_name,
         title_date_str=title_date_str,
@@ -1426,7 +1415,6 @@ def main():
         market_data=market_data,
         prior_context=prior_context,
         expected_title=expected_title,
-        window_start=window_start,
     )
     if not prompt:
         print(f"Unknown review type: {REVIEW_TYPE}")
@@ -1440,7 +1428,7 @@ def main():
     print("\n── Layer 1: Regex validation ──")
     result, validation_warnings = validate_and_fix(result, REVIEW_TYPE)
 
-    # Layer 2: Structure enforcement — forces title, single section, heading name, bullet format
+    # Layer 2: Structure enforcement (NEW) — forces title, section count, heading names, bullet format
     print("\n── Layer 2: Structure enforcement ──")
     result = enforce_structure(result, REVIEW_TYPE, expected_title)
 
