@@ -759,31 +759,22 @@ Event types: macro data (NFP, CPI, PPI, PMI, GDP, jobless claims), Fed rate deci
 
 CURRENT DATE AND TIME: {date_str} at {now_time} Israel time.
 
-Your task: Rapid-fire summary of the most important events happening RIGHT NOW that are relevant to Wall Street investors. This is a "מה קורה עכשיו" update — just the news, no market data or index levels.
+Your task: Short, sharp bullets of BREAKING NEWS and events happening TODAY ONLY. This is a quick "מה קורה עכשיו" snapshot.
 
-CRITICAL — ONLY EVENTS THAT HAVE ALREADY HAPPENED:
-- Only include events that occurred BEFORE {now_time} today.
-- If economic data is scheduled for later today, do NOT present it as "already released".
-- This is a snapshot of NOW — not a summary of recent days.
+CRITICAL RULES:
+- ONLY include news and events from TODAY ({date_str}). Nothing from yesterday or earlier.
+- NO economic data that was released on previous days. If data was released yesterday, it is NOT news anymore.
+- NO market data, index levels, percentages, commodity prices, or VIX.
+- NO "שורה תחתונה" section. Output ONLY ONE section with the news bullets.
+- Keep each bullet to 1-2 sentences MAX. This is a news ticker, not analysis.
+- 6-10 bullets of: breaking news, geopolitical developments, company announcements, analyst calls, regulatory news.
 
 {SHARED_RULES}
 
-{format_block}
-
-Include 6-10 bullets in section 1 of NEWS AND EVENTS ONLY:
-- Breaking news and developments
-- Geopolitical events affecting markets
-- Notable company news, deals, earnings surprises
-- Fed/central bank comments or actions
-- Regulatory developments
-- Analyst calls or institutional moves
-Do NOT include index levels, % changes, commodity prices, or VIX.
-
-Section 2 ("שורה תחתונה"): 2-3 sentences MAX. Dominant story right now + what to watch in next few hours.
-
 {tweets_block}
 
-Output ONLY a JSON object with keys: title, date, sections. No other text."""
+Output JSON format:
+{{"title":"מה קורה עכשיו בוול סטריט 🇺🇸 – יום {day_name}, {date_str} | {now_time}","date":"{date_str}","sections":[{{"heading":"חדשות אחרונות","content":"* sub-heading: fact\\n* sub-heading: fact..."}}]}}"""
 
     return ""
 
@@ -952,8 +943,8 @@ def enforce_structure(result, review_type, expected_title):
         print("  ⚠️ enforce_structure: result is not a dict — returning unchanged")
         return result
 
-    # Events uses a different structure — no enforcement needed here
-    if review_type == "events":
+    # Events and live_news use a different structure — no enforcement needed
+    if review_type in ("events", "live_news"):
         return result
 
     first_heading = EXPECTED_FIRST_HEADING.get(review_type, "נקודות מרכזיות")
