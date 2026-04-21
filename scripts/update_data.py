@@ -77,8 +77,6 @@ def fetch_market_data(weekly=False):
         "TLT": "US 20Y+ Bonds (TLT ETF)",
         # Dollar
         "UUP": "US Dollar (UUP ETF)",
-        # VIX proxy
-        "VIXY": "VIX Volatility (VIXY ETF)",
     }
 
     # Daily quotes
@@ -373,25 +371,11 @@ def fetch_tweets():
 # ══════════════════════════════════════════════════════════════
 
 def get_prior_review_context(review_type, data):
-    """Inject yesterday's/last week's review so Gemini doesn't repeat the same news.
-    This is the fix for: 'daily_prep keeps summarizing what was already in daily_summary'."""
+    """Inject prior review context to avoid duplication.
+    NOTE: daily_prep is EXCLUDED — injecting yesterday's summary causes Gemini
+    to write in past tense instead of forward-looking language."""
     if review_type == "daily_prep":
-        prior = data.get("dailySummary")
-        if prior and prior.get("sections"):
-            sections = prior["sections"]
-            content = "\n\n".join(
-                f"[{s.get('heading', '')}]\n{s.get('content', '')}"
-                for s in sections
-            )
-            return f"""
-══ CONTEXT: YESTERDAY'S DAILY SUMMARY — DO NOT REPEAT THIS CONTENT ══
-The text below was already published yesterday. Your briefing is FORWARD-LOOKING.
-Do NOT re-describe events, news items, or market moves that already appear below.
-Mention something from yesterday ONLY if there is a genuinely NEW development about it overnight.
-
-{content}
-══════════════════════════════════════════════════════════════════════════════
-"""
+        return ""  # Disabled — causes tense confusion
     elif review_type == "weekly_prep":
         prior = data.get("weeklySummary")
         if prior and prior.get("sections"):
@@ -448,6 +432,7 @@ CRITICAL — KEY MARKET DATA (MANDATORY VERIFICATION):
 - NEVER trust a single tweet for major price data. Always cross-reference.
 - NEVER write vague descriptions like "the market closed in green territory" or "mixed trading" without exact numbers.
 - NEVER claim an index or stock is at an "all-time high" (שיא / שיא כל הזמנים) unless you verify it via Google Search.
+- NEVER use superlatives like "the largest company in the world" (החברה הגדולה בעולם), "the biggest", "the most" unless you verify it via Google Search. Company rankings change frequently.
 
 CRITICAL — SECTOR PERFORMANCE (NEW RULE):
 - For sector ETF performance (XLE/XLK/XLF/XLY/XLV/XLI/XLP/XLU), use ONLY the percentages provided in the Finnhub verified data above.
@@ -1362,19 +1347,20 @@ def main():
 
     print(f"Fetched {len(tweets.split(chr(10)+chr(10)))} tweet blocks")
 
-    # Finnhub market data
-    is_weekly = REVIEW_TYPE in ("weekly_summary", "weekly_prep")
-    market_data = fetch_market_data(weekly=is_weekly)
+    # Finnhub market data — skip for live_news (news only, no market data)
+    if REVIEW_TYPE == "live_news":
+        market_data = ""
+    else:
+        is_weekly = REVIEW_TYPE in ("weekly_summary", "weekly_prep")
+        market_data = fetch_market_data(weekly=is_weekly)
 
-    # Economic calendar
+    # Economic calendar — skip for live_news
     if REVIEW_TYPE == "daily_summary":
         econ_data = fetch_economic_data(days_back=1, days_forward=0)
     elif REVIEW_TYPE in ("weekly_summary", "weekly_prep"):
         econ_data = fetch_economic_data(days_back=7, days_forward=0)
     elif REVIEW_TYPE == "daily_prep":
         econ_data = fetch_economic_data(days_back=1, days_forward=1)
-    elif REVIEW_TYPE == "live_news":
-        econ_data = fetch_economic_data(days_back=1, days_forward=0)
     else:
         econ_data = ""
 
