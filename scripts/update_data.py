@@ -361,7 +361,13 @@ def fetch_tweets():
                 tweets = data.get("data", {}).get("tweets", [])
                 print(f"    -> {len(tweets)} tweets")
                 for t in tweets[:10]:
-                    all_t.append(f"@{acc}: {t.get('text','')}")
+                    text = t.get('text', '')
+                    # Include timestamp if available — critical for live_news 2-hour window
+                    ts = t.get('createdAt') or t.get('created_at') or t.get('date') or ''
+                    if ts:
+                        all_t.append(f"@{acc} [{ts}]: {text}")
+                    else:
+                        all_t.append(f"@{acc}: {text}")
             else:
                 print(f"    -> Error: {r.text[:200]}")
         except Exception as e:
@@ -754,27 +760,67 @@ Output JSON format — THIS IS DIFFERENT FROM OTHER REVIEWS (uses "items", not "
 Event types: macro data (NFP, CPI, PPI, PMI, GDP, jobless claims), Fed rate decisions and Fed speakers, major earnings (mega-cap), options/futures expiry, Treasury auctions, geopolitical deadlines."""
 
     elif review_type == "live_news":
-        now_time = datetime.now(ISR_TZ).strftime('%H:%M')
-        return f"""You are a Wall Street news desk editor delivering a real-time news update in Hebrew.
+        now_dt = datetime.now(ISR_TZ)
+        now_time = now_dt.strftime('%H:%M')
+        two_hours_ago = (now_dt - timedelta(hours=2)).strftime('%H:%M')
+        return f"""You are a Wall Street news desk editor delivering a concise real-time news flash in Hebrew.
 
 CURRENT DATE AND TIME: {date_str} at {now_time} Israel time.
+TIME WINDOW: Only news that broke between {two_hours_ago} and {now_time} Israel time today.
 
-Your task: Short, sharp bullets of BREAKING NEWS and events happening TODAY ONLY. This is a quick "מה קורה עכשיו" snapshot.
+=== TIME WINDOW — STRICT (last 2 hours only) ===
+- Include ONLY items that broke between {two_hours_ago} and {now_time} Israel time today.
+- Tweet timestamps (when present in the source block below, in [brackets]) tell you when each item was posted. Use them.
+- If you cannot determine when an event happened from the sources, OMIT it. Do not guess.
+- Do NOT include anything from earlier today, yesterday, or older. This is a real-time flash, not a daily wrap.
 
-CRITICAL RULES:
-- ONLY include news and events from TODAY ({date_str}). Nothing from yesterday or earlier.
-- NO economic data that was released on previous days. If data was released yesterday, it is NOT news anymore.
-- NO market data, index levels, percentages, commodity prices, or VIX.
-- NO "שורה תחתונה" section. Output ONLY ONE section with the news bullets.
-- Keep each bullet to 1-2 sentences MAX. This is a news ticker, not analysis.
-- 6-10 bullets of: breaking news, geopolitical developments, company announcements, analyst calls, regulatory news.
+=== WHAT TO INCLUDE (closed whitelist — only these categories) ===
+1. Major macro data released in the last 2 hours: CPI, PPI, NFP, Jobless Claims, FOMC decision/minutes, Retail Sales (headline), GDP, ISM PMI, Consumer Confidence/Sentiment. Include actual vs forecast.
+2. Fed/Treasury officials speaking in the last 2 hours — their specific remarks, not generic "hawkish/dovish".
+3. Individual stocks moving sharply in the last 2 hours (>3% move) with a clear named catalyst.
+4. Major geopolitical breaks: war escalation, sanctions, strikes, shipping disruptions, major diplomatic moves.
+5. Large M&A announcements (deal size >$500M) and IPO filings.
+6. Corporate earnings released in the last 2 hours (pre-market or after-hours print).
+7. SEC / regulatory / antitrust decisions affecting major companies.
+
+=== WHAT TO EXCLUDE (blocklist) ===
+- Redbook retail index, ICSC weekly sales, weekly mortgage applications.
+- Business inventories, wholesale inventories.
+- Treasury bill auction yields (3-month, 6-month, 1-year). Treasury auctions are not news.
+- "Weekly ADP" — ADP Employment Report is MONTHLY. If you see a weekly ADP figure, it is WRONG; discard it.
+- Broad index levels, daily % moves, VIX level, sector performance — those belong in daily_summary, not here.
+- Stock moves below 3%.
+- Routine analyst rating changes unless the price target move is dramatic and from a top-tier firm.
+- General "market sentiment" commentary without a concrete event.
+- Anything where you cannot name a specific company, person, number, or event.
+
+=== FORMAT — STRICT ===
+- Output EXACTLY ONE section with heading "חדשות אחרונות". NO second section. NO "שורה תחתונה". NO summary.
+- Each line starts with "* " (asterisk + space). No paragraphs. No sub-headings like "topic: content".
+- Each bullet is 1–2 short sentences. Punchy news-ticker style.
+- 4–8 bullets total. Fewer is better than padding with noise.
+- If fewer than 4 items qualify, output fewer bullets. If nothing qualifies, output ONE bullet: "* שקט יחסי בוול סטריט — אין חדשות דרמטיות בשעתיים האחרונות."
+- EVERY number in a bullet must trace to a specific tweet or to verified data. If you cannot point to a source for a number, remove the number or drop the bullet.
+
+=== GOOD BULLETS (examples) ===
+* איליי לילי ($LLY) ונובו נורדיסק ($NVO) יורדות בחדות לאחר ש-CVS ($CVS) הודיעה שלא תכסה תרופות השמנה במודל Medicare החדש.
+* מארסק מזהירה מפני מעבר במצר הורמוז בעקבות החרפת המתיחות בין ארה"ב לאיראן.
+* פרארי ($RACE) חשפה מחיר של כ-550,000 אירו לרכב החשמלי הראשון שלה — פלח אולטרה-יוקרה.
+
+=== BAD BULLETS (do NOT do this) ===
+* "נתוני מאקרו חזקים מהצפוי פורסמו היום בארה"ב, המכירות הקמעונאיות זינקו ב-1.7%..." ← paragraph, not a bullet; also "today" is too broad — live_news is 2-hour window.
+* "Redbook הראה עלייה שנתית של 6.7%, ירידה קלה מ-7%" ← blocklisted noise.
+* "ADP שבועי הראה 54.75 אלף משרות חדשות" ← ADP is monthly. This is a hallucination.
+* "תשואת אג"ח 3 חודשים ירדה ל-3.61%" ← T-bill auction yield, blocklisted.
 
 {SHARED_RULES}
 
 {tweets_block}
 
-Output JSON format:
-{{"title":"מה קורה עכשיו בוול סטריט 🇺🇸 – יום {day_name}, {date_str} | {now_time}","date":"{date_str}","sections":[{{"heading":"חדשות אחרונות","content":"* sub-heading: fact\\n* sub-heading: fact..."}}]}}"""
+Output JSON format — ONE section only:
+{{"title":"מה קורה עכשיו בוול סטריט 🇺🇸 – יום {day_name}, {date_str} | {now_time}","date":"{date_str}","sections":[{{"heading":"חדשות אחרונות","content":"* bullet 1\\n* bullet 2\\n* bullet 3"}}]}}
+
+Output ONLY the JSON object. No backticks, no commentary, no extra sections."""
 
     return ""
 
@@ -943,8 +989,8 @@ def enforce_structure(result, review_type, expected_title):
         print("  ⚠️ enforce_structure: result is not a dict — returning unchanged")
         return result
 
-    # Events and live_news use a different structure — no enforcement needed
-    if review_type in ("events", "live_news"):
+    # Events still uses a completely different structure (items, not sections)
+    if review_type == "events":
         return result
 
     first_heading = EXPECTED_FIRST_HEADING.get(review_type, "נקודות מרכזיות")
@@ -959,11 +1005,60 @@ def enforce_structure(result, review_type, expected_title):
     sections = result.get("sections", [])
     if not isinstance(sections, list) or len(sections) == 0:
         print("  ⚠️ enforce_structure: no sections — creating empty structure")
-        result["sections"] = [
-            {"heading": first_heading, "content": ""},
-            {"heading": "שורה תחתונה", "content": ""},
-        ]
+        if review_type == "live_news":
+            result["sections"] = [{"heading": first_heading, "content": ""}]
+        else:
+            result["sections"] = [
+                {"heading": first_heading, "content": ""},
+                {"heading": "שורה תחתונה", "content": ""},
+            ]
         return result
+
+    # ═══ live_news: single section, bullets only, no bottom line ═══
+    if review_type == "live_news":
+        # Merge content from all sections Gemini returned into ONE bucket.
+        # If Gemini (wrongly) produced a "שורה תחתונה" section, its content
+        # gets folded into the main bullets rather than discarded — but the
+        # SECTION itself is dropped so the HTML renderer doesn't show a bottom-line box.
+        merged_parts = []
+        for s in sections:
+            c = s.get("content", "")
+            if isinstance(c, list):
+                c = "\n".join(str(x) for x in c)
+            if c and c.strip():
+                merged_parts.append(c.strip())
+        merged = "\n".join(merged_parts)
+
+        # Force bullets. normalize_bullets converts paragraphs/unicode bullets to '* '.
+        normalized = normalize_bullets(merged)
+
+        # Extra safety for live_news: if after normalization there are still
+        # non-bullet paragraph lines, convert each surviving line to a bullet.
+        # This catches the "wall of text" bug seen in production.
+        fixed_lines = []
+        for line in normalized.split("\n"):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if stripped.startswith("* ") or stripped.startswith("- "):
+                fixed_lines.append("* " + stripped[2:] if stripped.startswith("- ") else stripped)
+            else:
+                # Bare paragraph line in live_news — force it into a bullet
+                fixed_lines.append("* " + stripped)
+        normalized = "\n".join(fixed_lines)
+
+        if len(sections) > 1:
+            print(f"  ✅ live_news: merged {len(sections)} sections → 1 (no bottom line)")
+        else:
+            print(f"  ✅ live_news: single section enforced, bullets normalized")
+
+        result["sections"] = [{
+            "heading": first_heading,
+            "content": normalized,
+        }]
+        return result
+
+    # ═══ All other review types: exactly 2 sections (main + שורה תחתונה) ═══
 
     # 3. If more than 2 sections, consolidate
     if len(sections) > 2:
@@ -1197,17 +1292,196 @@ def validate_and_fix(result, review_type):
     return result, warnings
 
 # ══════════════════════════════════════════════════════════════
+# NUMBER PROVENANCE CHECK — every number in the output must trace to a source
+# ══════════════════════════════════════════════════════════════
+
+# Numbers always safe to ignore (years, common round bases, tiny values)
+_PROVENANCE_IGNORE_EXACT = {
+    '100', '1000', '10000',
+    '2020', '2021', '2022', '2023', '2024', '2025', '2026', '2027', '2028',
+}
+# Below this threshold numbers are usually trivial (bullet counts, small list sizes)
+_PROVENANCE_IGNORE_MAX = 2.0
+# Above this threshold almost certainly market cap / dollar figures — keep checking
+_PROVENANCE_ABS_MAX = 1e13
+
+# Number-token regex: 1,234 | 1234.56 | 54.75 | 0.9
+_NUM_TOKEN = re.compile(r'(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)')
+
+# Hebrew context words that indicate the number is a time/date/period, not a data point
+_TEMPORAL_CTX = re.compile(
+    r'\b(שעה|שעות|בשעה|יום|ימים|חודש|חודשים|שנה|שנים|שנתיים|ברבעון|רבעון|'
+    r'רבעונים|Q[1-4]|H[12]|שבוע|שבועות|דקה|דקות|ETA|בתוך)\b'
+)
+
+def _norm_num(s):
+    """Normalize a number token: strip commas, strip trailing zeros after decimal."""
+    s = s.replace(',', '')
+    try:
+        f = float(s)
+        if f == int(f):
+            return str(int(f))
+        # Strip trailing zeros: "54.70" -> "54.7"
+        return f"{f:g}"
+    except ValueError:
+        return s
+
+def build_source_bundle(market_data, tweets, prior_context):
+    """Flatten all source material into a searchable structure for provenance checks.
+    Returns a dict with 'all_text' (concatenated) and 'numbers' (set of normalized numeric tokens)."""
+    all_text = "\n".join([
+        market_data or "",
+        tweets or "",
+        prior_context or "",
+    ])
+    numbers = set()
+    for m in _NUM_TOKEN.finditer(all_text):
+        raw = m.group(1)
+        numbers.add(raw)
+        numbers.add(_norm_num(raw))
+    return {"all_text": all_text, "numbers": numbers}
+
+def number_provenance_check(result, source_bundle, review_type):
+    """Scan the generated review for numeric claims that don't trace to any source.
+    Phase 1: informational warnings only — logs suspicious numbers to stdout, returns
+    result unchanged. Drops are handled by fact_check_with_gemini downstream.
+
+    This catches hallucinations like 'ADP weekly 54.75K' that pass earlier layers because
+    they're internally consistent but absent from Finnhub/econ_calendar/tweets."""
+
+    if not isinstance(result, dict):
+        return result
+
+    all_text = source_bundle.get("all_text", "")
+    src_numbers = source_bundle.get("numbers", set())
+    warnings = []
+
+    def _is_in_sources(raw_token, normalized):
+        # Direct token match
+        if raw_token in src_numbers or normalized in src_numbers:
+            return True
+        # Raw substring in any source (catches cases where source has '54,750' and
+        # output has '54.75 אלף')
+        if raw_token in all_text or normalized in all_text:
+            return True
+        # Fuzzy match: within 0.5% relative tolerance (rounding differences are OK)
+        try:
+            v = float(normalized)
+            if v <= 0:
+                return False
+            for sn in src_numbers:
+                try:
+                    sv = float(sn)
+                    if sv > 0 and abs(v - sv) / sv < 0.005:
+                        return True
+                except ValueError:
+                    continue
+        except ValueError:
+            pass
+        return False
+
+    def _scan(text, label):
+        if not isinstance(text, str) or not text.strip():
+            return
+        for m in _NUM_TOKEN.finditer(text):
+            raw = m.group(1)
+            normalized = _norm_num(raw)
+            # Skip well-known / year numbers
+            if normalized in _PROVENANCE_IGNORE_EXACT:
+                continue
+            try:
+                fv = float(normalized)
+                if fv >= _PROVENANCE_ABS_MAX:
+                    continue
+            except ValueError:
+                continue
+            # Immediate character after the number — '%' or '$' flags it as financial
+            after_char = text[m.end():m.end()+1] if m.end() < len(text) else ""
+            before_char = text[m.start()-1:m.start()] if m.start() > 0 else ""
+            after_window = text[m.end():min(len(text), m.end() + 15)]
+            # Financial unit markers attached to the number
+            is_financial = (
+                after_char == "%"
+                or after_char == "$"
+                or before_char == "$"
+                or after_window.lstrip().startswith(("אלף", "מיליון", "מיליארד", "טריליון", "נקודות", "נק'", "נק׳", "יורו", "₪", "דולר"))
+            )
+            # Bare numbers (no financial unit) that are tiny are almost always trivial
+            # (list numbering, "3 reasons", etc.) — skip. But financial numbers like 0.4%
+            # are significant macro data and must be checked no matter how small.
+            if not is_financial and fv <= _PROVENANCE_IGNORE_MAX:
+                continue
+            # Wide context window for temporal check
+            ctx_start = max(0, m.start() - 25)
+            ctx_end = min(len(text), m.end() + 25)
+            ctx = text[ctx_start:ctx_end]
+            # Temporal skip — BUT only if the number is NOT explicitly marked as financial.
+            # Otherwise "3 חודשים: 3.61%" would drop the 3.61 (a yield) as if it were "3 months".
+            if not is_financial and _TEMPORAL_CTX.search(ctx):
+                continue
+            # Now check provenance
+            if _is_in_sources(raw, normalized):
+                continue
+            # Not found — record warning
+            warnings.append({
+                "label": label,
+                "number": raw,
+                "context": ctx.strip(),
+            })
+
+    # Scan title + every section content + events items
+    title = result.get("title", "")
+    if isinstance(title, str):
+        _scan(title, "title")
+    for i, section in enumerate(result.get("sections", [])):
+        content = section.get("content", "")
+        if isinstance(content, list):
+            content = "\n".join(str(x) for x in content)
+        heading = section.get("heading", f"section_{i}")
+        _scan(content, f"section[{heading}]")
+    for i, item in enumerate(result.get("items", [])):
+        _scan(item.get("description", ""), f"event[{i}]")
+
+    if warnings:
+        print(f"\n  ⚠️  Number provenance: {len(warnings)} numbers not found in sources")
+        for w in warnings[:20]:
+            print(f"     [{w['label']}] '{w['number']}' → ...{w['context']}...")
+        if len(warnings) > 20:
+            print(f"     ... and {len(warnings) - 20} more")
+        # Attach warnings to the result for potential downstream use
+        result["_provenance_warnings"] = warnings
+    else:
+        print("  ✅ Number provenance: every number traces to a source")
+
+    return result
+
+
+# ══════════════════════════════════════════════════════════════
 # FACT-CHECKER
 # ══════════════════════════════════════════════════════════════
 
-def fact_check_with_gemini(result, market_data, review_type):
-    """Flash-based fact check. Runs AFTER enforce_structure so the structure it sees is already correct."""
-    review_json = json.dumps(result, ensure_ascii=False, indent=2)
+def fact_check_with_gemini(result, market_data, review_type, provenance_warnings=None):
+    """Flash-based fact check. Runs AFTER enforce_structure so the structure it sees is already correct.
+    If provenance_warnings is provided, the fact-checker is instructed to remove bullets whose
+    numbers cannot be verified against sources."""
+    # Strip internal metadata before serializing for the model
+    clean_result = {k: v for k, v in result.items() if not k.startswith("_")}
+    review_json = json.dumps(clean_result, ensure_ascii=False, indent=2)
+
+    # Build the provenance block for the fact-checker prompt
+    provenance_block = ""
+    if provenance_warnings:
+        lines = ["\nPROVENANCE WARNINGS — these numbers from the review were NOT found in any source:"]
+        for w in provenance_warnings[:15]:
+            lines.append(f"- In {w['label']}: number '{w['number']}' (context: ...{w['context']}...)")
+        lines.append("\nFor each warning above: either (a) the number is correct and you can verify it via your own knowledge — keep the bullet; or (b) the number is a hallucination — REMOVE the entire bullet containing that number from the content. Do NOT just silently fix the number to something else — if it can't be verified, remove the claim.")
+        provenance_block = "\n".join(lines)
 
     prompt = f"""You are a FACT-CHECKER for a Hebrew financial market review. Your ONLY job is to find and fix factual errors.
 
 VERIFIED MARKET DATA (100% correct, sourced from Finnhub API):
 {market_data if market_data else "(No Finnhub data available for this run)"}
+{provenance_block}
 
 THE REVIEW TO CHECK:
 {review_json}
@@ -1220,16 +1494,19 @@ YOUR TASK:
 - For 10-year Treasury yield, commodity absolute prices ($/barrel, $/oz), and DXY level: these are NOT in Finnhub. Only keep them if they are clearly reasonable; otherwise remove.
 - DO NOT change the writing style, structure, section count, or section headings.
 - DO NOT remove content — only fix errors or remove clearly-hallucinated numbers.
+- EXCEPTION: if PROVENANCE WARNINGS above flag a number you cannot verify, remove the entire bullet containing it (see provenance instructions above).
 - DO NOT change the "title" field or section headings — those are already enforced.
 - If everything is correct, return the review unchanged.
 
-COMMON ERRORS:
+COMMON ERRORS TO CATCH:
 - Donald Trump is the CURRENT US President (since Jan 2025). NOT a former president.
 - Claude is by Anthropic, ChatGPT is by OpenAI, Gemini is by Google.
 - IPO ≠ ETF.
+- ADP Employment Report is MONTHLY, not weekly. Any "weekly ADP" number is a hallucination — remove it.
 - Contradictions: If bullets say market rose sharply, the bottom line must not say "mixed trading".
+- Self-contradicting phrases like "נותרו יציבות עם עלייה של X%" — resolve to one or the other.
 
-OUTPUT: Return the corrected review as valid JSON in EXACTLY the same structure (same title, same two section headings, same number of sections). No backticks, no explanations — pure JSON only."""
+OUTPUT: Return the corrected review as valid JSON in EXACTLY the same structure (same title, same section headings, same number of sections — for live_news that means exactly 1 section, for others exactly 2). No backticks, no explanations — pure JSON only."""
 
     try:
         r = requests.post(
@@ -1419,22 +1696,31 @@ def main():
     print("\n── Layer 1: Regex validation ──")
     result, validation_warnings = validate_and_fix(result, REVIEW_TYPE)
 
-    # Layer 2: Structure enforcement (NEW) — forces title, section count, heading names, bullet format
+    # Layer 2: Structure enforcement — forces title, section count, heading names, bullet format
     print("\n── Layer 2: Structure enforcement ──")
     result = enforce_structure(result, REVIEW_TYPE, expected_title)
 
-    # Layer 3: Gemini Flash fact-checker
-    print("\n── Layer 3: Gemini fact-checker ──")
-    result = fact_check_with_gemini(result, market_data, REVIEW_TYPE)
+    # Layer 3: Number provenance check — flags numbers absent from source bundle
+    print("\n── Layer 3: Number provenance ──")
+    source_bundle = build_source_bundle(market_data, tweets, prior_context)
+    result = number_provenance_check(result, source_bundle, REVIEW_TYPE)
+    provenance_warnings = result.pop("_provenance_warnings", None)
 
-    # Layer 4: Re-enforce structure (defensive — fact-checker sometimes alters section headings)
-    print("\n── Layer 4: Final structure enforcement ──")
+    # Layer 4: Gemini Flash fact-checker — uses provenance warnings to drop unverifiable bullets
+    print("\n── Layer 4: Gemini fact-checker ──")
+    result = fact_check_with_gemini(result, market_data, REVIEW_TYPE, provenance_warnings=provenance_warnings)
+
+    # Layer 5: Re-enforce structure (defensive — fact-checker sometimes alters section headings)
+    print("\n── Layer 5: Final structure enforcement ──")
     result = enforce_structure(result, REVIEW_TYPE, expected_title)
 
-    # Layer 5: Pre-market tense guard (daily_prep only, only if run before US market open)
-    print("\n── Layer 5: Pre-market tense guard ──")
+    # Layer 6: Pre-market tense guard (daily_prep only, only if run before US market open)
+    print("\n── Layer 6: Pre-market tense guard ──")
     result = apply_pre_market_tense_guard(result, REVIEW_TYPE)
     print("── Validation complete ──\n")
+
+    # Defensive: strip any internal metadata before persisting
+    result = {k: v for k, v in result.items() if not k.startswith("_")}
 
     # Save
     with open("data.json", "r", encoding="utf-8") as f:
