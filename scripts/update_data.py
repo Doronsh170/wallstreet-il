@@ -763,64 +763,37 @@ Event types: macro data (NFP, CPI, PPI, PMI, GDP, jobless claims), Fed rate deci
         now_dt = datetime.now(ISR_TZ)
         now_time = now_dt.strftime('%H:%M')
         two_hours_ago = (now_dt - timedelta(hours=2)).strftime('%H:%M')
-        return f"""You are a Wall Street news desk editor delivering a concise real-time news flash in Hebrew.
+        return f"""אתה עורך חדשות בוול סטריט. תן למשקיע ישראלי את החדשות מ-2 השעות האחרונות, בנקודות.
 
-CURRENT DATE AND TIME: {date_str} at {now_time} Israel time.
-TIME WINDOW: Only news that broke between {two_hours_ago} and {now_time} Israel time today.
+זמן עכשיו: {date_str} בשעה {now_time} (שעון ישראל).
+חלון זמן: רק חדשות שפורסמו בין {two_hours_ago} ל-{now_time} היום.
 
-=== TIME WINDOW — STRICT (last 2 hours only) ===
-- Include ONLY items that broke between {two_hours_ago} and {now_time} Israel time today.
-- Tweet timestamps (when present in the source block below, in [brackets]) tell you when each item was posted. Use them.
-- If you cannot determine when an event happened from the sources, OMIT it. Do not guess.
-- Do NOT include anything from earlier today, yesterday, or older. This is a real-time flash, not a daily wrap.
+פורמט:
+- סעיף אחד בלבד, כותרת "חדשות אחרונות".
+- 4–7 בולטים. כל שורה מתחילה ב-"* ".
+- כל בולט = ידיעה אחת. משפט אחד עד שניים. תמציתי, נעים לקריאה.
+- אין שורה תחתונה. אין סיכום.
+- אם אין חדשות דרמטיות ב-2 שעות האחרונות, החזר בולט אחד: "* שקט יחסי בוול סטריט — אין חדשות דרמטיות בשעתיים האחרונות."
 
-=== WHAT TO INCLUDE (closed whitelist — only these categories) ===
-1. Major macro data released in the last 2 hours: CPI, PPI, NFP, Jobless Claims, FOMC decision/minutes, Retail Sales (headline), GDP, ISM PMI, Consumer Confidence/Sentiment. Include actual vs forecast.
-2. Fed/Treasury officials speaking in the last 2 hours — their specific remarks, not generic "hawkish/dovish".
-3. Individual stocks moving sharply in the last 2 hours (>3% move) with a clear named catalyst.
-4. Major geopolitical breaks: war escalation, sanctions, strikes, shipping disruptions, major diplomatic moves.
-5. Large M&A announcements (deal size >$500M) and IPO filings.
-6. Corporate earnings released in the last 2 hours (pre-market or after-hours print).
-7. SEC / regulatory / antitrust decisions affecting major companies.
+מה נכלל:
+חדשות אמיתיות — הודעות חברות, מהלכים גיאופוליטיים, תנועות חדות של מניות (מעל 3%) או סחורות (מעל 2%), פרסום נתוני מאקרו משמעותיים (אינפלציה, תעסוקה, מדדי מנהלי רכש, החלטות פד), דיבור של בכירי פד, עסקאות M&A גדולות, החלטות רגולטוריות.
 
-=== WHAT TO EXCLUDE (blocklist) ===
-- Redbook retail index, ICSC weekly sales, weekly mortgage applications.
-- Business inventories, wholesale inventories.
-- Treasury bill auction yields (3-month, 6-month, 1-year). Treasury auctions are not news.
-- "Weekly ADP" — ADP Employment Report is MONTHLY. If you see a weekly ADP figure, it is WRONG; discard it.
-- Broad index levels, daily % moves, VIX level, sector performance — those belong in daily_summary, not here.
-- Stock moves below 3%.
-- Routine analyst rating changes unless the price target move is dramatic and from a top-tier firm.
-- General "market sentiment" commentary without a concrete event.
-- Anything where you cannot name a specific company, person, number, or event.
+מה לא נכלל:
+- מה שהיה מוקדם יותר היום או אתמול.
+- נתוני מאקרו משניים כמו Redbook, מלאי עסקים, מכרזי אג"ח קצרות, מכירות קמעונאיות/GDP/סנטימנט צרכנים (אלה שייכים לסיכום היומי, לא לעדכון חי).
+- פירוט טכני של מדדים: בלי "Core", "בנטרול רכב", "קבוצת בקרה", "MoM/YoY" ביחד. רק הכותרת.
+- אנליסטים שמעלים/מורידים המלצה (אלא אם יעד המחיר זז מעל 20%).
+- ADP שבועי — ADP הוא חודשי. אם ראית "ADP שבועי" בציוץ, זו טעות. התעלם.
+- מספרים שאתה לא יכול לאתר במקור.
 
-=== FORMAT — STRICT ===
-- Output EXACTLY ONE section with heading "חדשות אחרונות". NO second section. NO "שורה תחתונה". NO summary.
-- Each line starts with "* " (asterisk + space). No paragraphs. No sub-headings like "topic: content".
-- Each bullet is 1–2 short sentences. Punchy news-ticker style.
-- 4–8 bullets total. Fewer is better than padding with noise.
-- If fewer than 4 items qualify, output fewer bullets. If nothing qualifies, output ONE bullet: "* שקט יחסי בוול סטריט — אין חדשות דרמטיות בשעתיים האחרונות."
-- EVERY number in a bullet must trace to a specific tweet or to verified data. If you cannot point to a source for a number, remove the number or drop the bullet.
-
-=== GOOD BULLETS (examples) ===
-* איליי לילי ($LLY) ונובו נורדיסק ($NVO) יורדות בחדות לאחר ש-CVS ($CVS) הודיעה שלא תכסה תרופות השמנה במודל Medicare החדש.
-* מארסק מזהירה מפני מעבר במצר הורמוז בעקבות החרפת המתיחות בין ארה"ב לאיראן.
-* פרארי ($RACE) חשפה מחיר של כ-550,000 אירו לרכב החשמלי הראשון שלה — פלח אולטרה-יוקרה.
-
-=== BAD BULLETS (do NOT do this) ===
-* "נתוני מאקרו חזקים מהצפוי פורסמו היום בארה"ב, המכירות הקמעונאיות זינקו ב-1.7%..." ← paragraph, not a bullet; also "today" is too broad — live_news is 2-hour window.
-* "Redbook הראה עלייה שנתית של 6.7%, ירידה קלה מ-7%" ← blocklisted noise.
-* "ADP שבועי הראה 54.75 אלף משרות חדשות" ← ADP is monthly. This is a hallucination.
-* "תשואת אג"ח 3 חודשים ירדה ל-3.61%" ← T-bill auction yield, blocklisted.
+כלל זהב: כל בולט = ידיעה אחת, משפט קצר, בלי הרחבות. אם הבולט שלך מעל 25 מילים, קצר אותו.
 
 {SHARED_RULES}
 
 {tweets_block}
 
-Output JSON format — ONE section only:
-{{"title":"מה קורה עכשיו בוול סטריט 🇺🇸 – יום {day_name}, {date_str} | {now_time}","date":"{date_str}","sections":[{{"heading":"חדשות אחרונות","content":"* bullet 1\\n* bullet 2\\n* bullet 3"}}]}}
-
-Output ONLY the JSON object. No backticks, no commentary, no extra sections."""
+החזר אך ורק JSON בפורמט הזה, בלי backticks, בלי הסברים:
+{{"title":"מה קורה עכשיו בוול סטריט 🇺🇸 – יום {day_name}, {date_str} | {now_time}","date":"{date_str}","sections":[{{"heading":"חדשות אחרונות","content":"* בולט 1\\n* בולט 2\\n* בולט 3"}}]}}"""
 
     return ""
 
@@ -1036,16 +1009,31 @@ def enforce_structure(result, review_type, expected_title):
         # non-bullet paragraph lines, convert each surviving line to a bullet.
         # This catches the "wall of text" bug seen in production.
         fixed_lines = []
+        long_bullets = []
         for line in normalized.split("\n"):
             stripped = line.strip()
             if not stripped:
                 continue
             if stripped.startswith("* ") or stripped.startswith("- "):
-                fixed_lines.append("* " + stripped[2:] if stripped.startswith("- ") else stripped)
+                bullet_line = "* " + stripped[2:] if stripped.startswith("- ") else stripped
+                fixed_lines.append(bullet_line)
+                # Flag bullets that exceed the 30-word soft limit
+                body = bullet_line[2:]
+                word_count = len(body.split())
+                if word_count > 35:
+                    long_bullets.append((word_count, body[:80]))
             else:
                 # Bare paragraph line in live_news — force it into a bullet
                 fixed_lines.append("* " + stripped)
+                word_count = len(stripped.split())
+                if word_count > 35:
+                    long_bullets.append((word_count, stripped[:80]))
         normalized = "\n".join(fixed_lines)
+
+        if long_bullets:
+            print(f"  ⚠️  live_news: {len(long_bullets)} bullets exceed 35-word limit (prompt ignored):")
+            for wc, preview in long_bullets:
+                print(f"     [{wc} words] {preview}...")
 
         if len(sections) > 1:
             print(f"  ✅ live_news: merged {len(sections)} sections → 1 (no bottom line)")
