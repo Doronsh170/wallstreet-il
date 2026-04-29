@@ -449,6 +449,48 @@ SHARED_RULES = """Rules:
 - Start each bullet directly with the fact. No generic opening phrases.
 - Output pure JSON only, no backticks, no explanations.
 
+CRITICAL — FACTUAL JOURNALISM QUALITY BAR:
+This is the difference between a real Wall Street news desk and a sloppy auto-generated feed. Every bullet must meet these standards:
+
+(1) HEDGING BLACKLIST — these phrases are FORBIDDEN whenever an exact number is available:
+- "כ-X%" / "כ-X דולר" → write the exact number: "X.X%" / "$X.XX"
+- "סביב X" / "קרוב ל-X" / "בערך X" → write the verified number, no fuzzy framing
+- "מעל X" / "מתחת ל-X" → use this ONLY for thresholds where the exact figure is genuinely unknown; otherwise give the actual number
+- "ירד מעט" / "עלה מעט" / "עלייה קלה" / "ירידה חדה" — never use without the % attached; even with the %, drop the qualitative adjective
+If you cannot get an exact number, OMIT the bullet entirely. There is no middle ground between "exact" and "skip".
+
+(2) EARNINGS BULLETS — mandatory template when reporting a company's earnings:
+- Required fields: ticker, after-hours/pre-market move %, EPS actual vs forecast, revenue actual vs forecast, plus any concrete announcement (buyback $X, dividend, guidance number).
+- Good: "$V +X.X% במסחר המאוחר; EPS $2.69 מול צפי $2.65, הכנסות $9.85B מול צפי $9.62B; אישרה buyback של $20B."
+- Bad: "ויזה דיווחה על תוצאות שעקפו את תחזיות האנליסטים." (vague, no numbers — REJECT)
+- If actual EPS/revenue numbers are not available from sources, do NOT include the earnings bullet.
+
+(3) SOURCE ATTRIBUTION FOR REPORTS — "על פי דיווחים" / "לפי מקורות" alone is FORBIDDEN:
+- Every report-based bullet must name a specific outlet (WSJ, Bloomberg, Reuters, FT, CNBC, Axios) OR an official source (company press release, SEC filing, government agency).
+- Good: "לפי דיווח Bloomberg, דיסני ($DIS) אינה מתכננת עוד spin-off ל-ESPN."
+- Bad: "על פי דיווחים, דיסני..." → REJECT.
+- If you cannot identify the source from the tweets/Google Search, OMIT the bullet.
+
+(4) STRUCTURAL CONSISTENCY — pick ONE structure per topic and stick to it:
+- For the major US indices (S&P 500, Nasdaq 100, Dow, Russell 2000): use ONE combined bullet listing all four — OR a separate bullet per index. Never mix (one combined + one solo). Combined is preferred when the moves are all in the same direction or the day is unremarkable.
+- For sector ETFs: ONE combined bullet listing the notable sector moves. Not one bullet per sector.
+- For commodities (oil/gold/Bitcoin): one combined bullet OR one per commodity — pick one approach.
+
+(5) TIMING WHEN RELEVANT:
+- "במסחר המאוחר" / "after-hours" / "pre-market" / "לפני הפתיחה" — include when reporting a stock move that did not happen during regular session.
+- For earnings, always specify whether the report was BMO (לפני פתיחה) or AMC (אחרי סגירה) when known.
+- For scheduled events: always include the Israel time of release.
+
+(6) ANTI-MONOTONY — vary bullet openings:
+- Do NOT open three or more consecutive bullets with the same word ("מדד...", "מדד...", "מדד...").
+- Do NOT open every company bullet with "מניית..." — alternate: "$TICKER", "החברה X", "Y הודיעה", etc.
+- The output should read like a news desk wrote it, not a template.
+
+(7) INDEX LEVEL VS % CHANGE:
+- When reporting an index, include BOTH the % change AND the closing point level (verified via Google Search).
+- Format: "S&P 500 ירד 0.49% לרמה של 7,138.80 נקודות."
+- Do not include only the % without the level, and do not include only the level without the %.
+
 CRITICAL — KEY MARKET DATA (MANDATORY VERIFICATION):
 - If VERIFIED MARKET DATA from Finnhub API is provided above the tweets, you MUST use those numbers for index performance (% change). Do NOT override them with numbers from tweets or from memory.
 - Use the verified % changes as-is. For exact index point levels, gold price, oil price, and VIX level: ALWAYS use Google Search. Do NOT calculate them from ETF prices.
