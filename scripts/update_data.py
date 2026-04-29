@@ -240,9 +240,10 @@ def fetch_economic_data(days_back=1, days_forward=0):
             *us_events,
             "INSTRUCTIONS FOR USING THIS DATA:",
             "- Every data point above MUST appear in the review — do NOT skip any.",
-            "- Format: ONE factual bullet per data point. Include the data point name, actual, forecast, previous. NO interpretation, NO 'מה זה אומר', NO analysis, NO Fed implications.",
-            "- Good example: '* נתוני CPI לחודש מרץ: בפועל 0.9% חודשי, צפי 0.8%, קודם 0.4%. Core CPI: בפועל 0.2%, צפי 0.3%, קודם 0.3%.'",
-            "- Bad example: '* האינפלציה הפתיעה כלפי מעלה ומגדילה את הסיכוי להעלאת ריבית' — this is interpretation, not a fact.",
+            "- Do NOT list them as raw numbers. Weave them naturally into analytical bullets.",
+            "- Good example: 'נתוני אינפלציה: מדד המחירים לצרכן (CPI) לחודש מרץ עלה ב-0.9% על בסיס חודשי, מעל הצפי של 0.8%, בעיקר עקב מחירי האנרגיה. מדד הליבה (Core CPI) עלה ב-0.2% בלבד, נמוך מהצפי של 0.3%.'",
+            "- Bad example: 'CPI: actual=0.9%, forecast=0.8%' — this is raw data, not analysis.",
+            "- Always explain WHY the number matters: what it means for Fed policy, markets, or investors.",
             "- Do NOT say data 'is expected' or 'will be released' if it already has an actual value above — it was ALREADY released.",
             "══════════════════════════════════════════════════════════════════════════════════════════\n"
         ])
@@ -266,7 +267,7 @@ You MUST use Google Search to find if ANY of these were released on {date_str}:
 - GDP
 - Retail Sales
 - FOMC decision or minutes
-If ANY of these were released today, include them as a factual bullet: data point name, actual number, forecast, previous. NO interpretation, NO 'מה זה אומר', NO Fed/market implications.
+If ANY of these were released today, include them with: actual number, forecast, previous, AND what it means for markets/Fed.
 If NONE were released today, skip this section — but you MUST check first.
 ══════════════════════════════════\n"""
     elif review_type == "weekly_summary":
@@ -283,7 +284,7 @@ Specifically search for EACH of these:
 7. FOMC — was there a decision or minutes released this week?
 8. Any other major data release (GDP, Retail Sales, etc.)
 
-For EVERY data point found: include actual number, forecast, previous period. NO interpretation, NO market implications, NO Fed analysis.
+For EVERY data point found: include actual number, forecast, previous period, AND explain the market implication.
 Do NOT write 'data is expected' if it was already released — check the date.
 Do NOT skip Core CPI if headline CPI was released — they are equally important.
 ══════════════════════════════════\n"""
@@ -438,58 +439,12 @@ The text below was published before today's trading session. Reference it to res
 
 SHARED_RULES = """Rules:
 - Write ONLY in Hebrew. Use English only for tickers ($AAPL), index names (S&P 500), and well-known financial terms in parentheses on first use only.
-- FACTUAL FORMAT ONLY. The output is a news/data update — NOT analysis, NOT interpretation, NOT investment commentary.
-- FORBIDDEN: market narrative, dominant theme, "what it means for investors", "מה זה אומר", "השלכה על", bull/bear scenarios, sector rotation analysis, transmission mechanisms, "connect the dots", positioning shifts, "key tension", investor psychology, recommendations, outlook framing.
-- ALLOWED: data points (actual / forecast / previous), prices, % moves, points, tickers, dates, times (Israel time), companies, headline catalysts stated as plain facts (e.g., "$AAPL -2.3% לאחר פספוס בדוחות"), scheduled events.
-- Be specific: every bullet must include at least one number, percentage, ticker, or date. Vague statements like "השוק היה מעורב" are forbidden.
-- One bullet = one fact. Keep bullets short and self-contained.
-- Do NOT repeat the same information across bullets. Each bullet must contain NEW content.
+- Be specific: every claim must include a number, percentage, or ticker. Never write vague statements like "the market had an interesting week".
+- Do NOT repeat the same information across sections. Each section must contain NEW content.
 - Do NOT mention the same ticker or company in multiple separate bullets. If a company has multiple news items, combine them into ONE bullet.
 - No buy/sell recommendations.
-- Start each bullet directly with the fact. No generic opening phrases.
+- Start each section directly with the key fact. No generic opening sentences.
 - Output pure JSON only, no backticks, no explanations.
-
-CRITICAL — FACTUAL JOURNALISM QUALITY BAR:
-This is the difference between a real Wall Street news desk and a sloppy auto-generated feed. Every bullet must meet these standards:
-
-(1) HEDGING BLACKLIST — these phrases are FORBIDDEN whenever an exact number is available:
-- "כ-X%" / "כ-X דולר" → write the exact number: "X.X%" / "$X.XX"
-- "סביב X" / "קרוב ל-X" / "בערך X" → write the verified number, no fuzzy framing
-- "מעל X" / "מתחת ל-X" → use this ONLY for thresholds where the exact figure is genuinely unknown; otherwise give the actual number
-- "ירד מעט" / "עלה מעט" / "עלייה קלה" / "ירידה חדה" — never use without the % attached; even with the %, drop the qualitative adjective
-If you cannot get an exact number, OMIT the bullet entirely. There is no middle ground between "exact" and "skip".
-
-(2) EARNINGS BULLETS — mandatory template when reporting a company's earnings:
-- Required fields: ticker, after-hours/pre-market move %, EPS actual vs forecast, revenue actual vs forecast, plus any concrete announcement (buyback $X, dividend, guidance number).
-- Good: "$V +X.X% במסחר המאוחר; EPS $2.69 מול צפי $2.65, הכנסות $9.85B מול צפי $9.62B; אישרה buyback של $20B."
-- Bad: "ויזה דיווחה על תוצאות שעקפו את תחזיות האנליסטים." (vague, no numbers — REJECT)
-- If actual EPS/revenue numbers are not available from sources, do NOT include the earnings bullet.
-
-(3) SOURCE ATTRIBUTION FOR REPORTS — "על פי דיווחים" / "לפי מקורות" alone is FORBIDDEN:
-- Every report-based bullet must name a specific outlet (WSJ, Bloomberg, Reuters, FT, CNBC, Axios) OR an official source (company press release, SEC filing, government agency).
-- Good: "לפי דיווח Bloomberg, דיסני ($DIS) אינה מתכננת עוד spin-off ל-ESPN."
-- Bad: "על פי דיווחים, דיסני..." → REJECT.
-- If you cannot identify the source from the tweets/Google Search, OMIT the bullet.
-
-(4) STRUCTURAL CONSISTENCY — pick ONE structure per topic and stick to it:
-- For the major US indices (S&P 500, Nasdaq 100, Dow, Russell 2000): use ONE combined bullet listing all four — OR a separate bullet per index. Never mix (one combined + one solo). Combined is preferred when the moves are all in the same direction or the day is unremarkable.
-- For sector ETFs: ONE combined bullet listing the notable sector moves. Not one bullet per sector.
-- For commodities (oil/gold/Bitcoin): one combined bullet OR one per commodity — pick one approach.
-
-(5) TIMING WHEN RELEVANT:
-- "במסחר המאוחר" / "after-hours" / "pre-market" / "לפני הפתיחה" — include when reporting a stock move that did not happen during regular session.
-- For earnings, always specify whether the report was BMO (לפני פתיחה) or AMC (אחרי סגירה) when known.
-- For scheduled events: always include the Israel time of release.
-
-(6) ANTI-MONOTONY — vary bullet openings:
-- Do NOT open three or more consecutive bullets with the same word ("מדד...", "מדד...", "מדד...").
-- Do NOT open every company bullet with "מניית..." — alternate: "$TICKER", "החברה X", "Y הודיעה", etc.
-- The output should read like a news desk wrote it, not a template.
-
-(7) INDEX LEVEL VS % CHANGE:
-- When reporting an index, include BOTH the % change AND the closing point level (verified via Google Search).
-- Format: "S&P 500 ירד 0.49% לרמה של 7,138.80 נקודות."
-- Do not include only the % without the level, and do not include only the level without the %.
 
 CRITICAL — KEY MARKET DATA (MANDATORY VERIFICATION):
 - If VERIFIED MARKET DATA from Finnhub API is provided above the tweets, you MUST use those numbers for index performance (% change). Do NOT override them with numbers from tweets or from memory.
@@ -500,18 +455,17 @@ CRITICAL — KEY MARKET DATA (MANDATORY VERIFICATION):
 - NEVER write vague descriptions like "the market closed in green territory" or "mixed trading" without exact numbers.
 - NEVER claim an index or stock is at an "all-time high" (שיא / שיא כל הזמנים) unless you verify it via Google Search.
 
-CRITICAL — SECTOR PERFORMANCE:
+CRITICAL — SECTOR PERFORMANCE (NEW RULE):
 - For sector ETF performance (XLE/XLK/XLF/XLY/XLV/XLI/XLP/XLU), use ONLY the percentages provided in the Finnhub verified data above.
 - If the Finnhub data does not include a specific sector, do NOT invent a number. Either omit it or use Google Search to verify.
-- NEVER write a specific sector percentage without a source.
-- Report sector performance as a plain factual bullet (e.g., "* מגזר האנרגיה (XLE) +1.2%, מגזר הטכנולוגיה (XLK) -0.4%"). Do NOT add "סיבוב סקטוריאלי", "rotation", or any narrative framing.
+- NEVER write a specific sector percentage without a source — this is a common hallucination.
 
 CRITICAL — MAJOR ECONOMIC DATA (DO NOT MISS):
 - Use Google Search to check if any major US economic data was released today: CPI, PPI, NFP, GDP, Jobless Claims, ISM PMI, Consumer Confidence, Retail Sales, FOMC minutes/decision.
 - If major data WAS released today, it MUST appear in the review — even if no tweet mentions it. This is non-negotiable.
-- CPI and NFP are the two most important data releases. Missing them is a critical failure.
+- CPI and NFP are the two most important data releases. Missing them from a daily review is a critical failure.
 - When CPI is mentioned, ALWAYS report BOTH headline CPI AND Core CPI (excluding food and energy).
-- For every economic data bullet, ALWAYS include: actual % (monthly AND annual where relevant), forecast, previous. ONLY the numbers — no interpretation.
+- When mentioning economic data, ALWAYS include: actual % (monthly AND annual), comparison to forecast, comparison to previous. Vague descriptions without numbers are unacceptable.
 
 CRITICAL — DATA ACCURACY:
 - EVERY number in the review must come from one of these sources: (1) Finnhub verified data above, (2) a specific tweet, or (3) Google Search verification.
@@ -520,6 +474,10 @@ CRITICAL — DATA ACCURACY:
 - For commodity absolute prices (oil $/barrel, gold $/oz): verify via Google Search — do NOT estimate from ETF prices.
 - If a number from a tweet contradicts the Finnhub verified data, the Finnhub data is correct — the tweet is wrong.
 - Getting a number wrong destroys credibility. When in doubt, omit.
+
+CRITICAL — CONSISTENCY:
+- The "שורה תחתונה" paragraph MUST be consistent with the bullet points above it.
+- Read your own bullets before writing the bottom line.
 
 CRITICAL — FINANCIAL TERMINOLOGY:
 - Use precise Hebrew financial terms. IPO (הנפקה ראשונית לציבור) is NOT the same as ETF (תעודת סל).
@@ -587,19 +545,19 @@ USE ONLY THESE TIMES. Do NOT calculate your own offset."""
 
 # ── Output format block — uniform across all review types ──
 def get_output_format_block(first_heading, expected_title):
-    """Standard, rigid output-format spec.
-    Single-section factual format — NO bottom line, NO summary, NO second section."""
+    """Standard, rigid output-format spec. This is what fixes the '3 sections instead of 2' bug
+    and the 'bottom line never gets special styling' bug."""
     return f"""
 CRITICAL — OUTPUT FORMAT (MANDATORY, NOT NEGOTIABLE):
-- Output EXACTLY 1 section in the "sections" array. Not 2, not 3. EXACTLY 1.
-- The single section's heading MUST be EXACTLY "{first_heading}" (no variations, no emojis, no added words).
+- Output EXACTLY 2 sections in the "sections" array. Not 1, not 3, not 4. EXACTLY 2.
+- Section 1: heading MUST be EXACTLY "{first_heading}" (no variations, no emojis, no added words).
+- Section 2: heading MUST be EXACTLY "שורה תחתונה" (no variations).
 - The "title" field MUST be EXACTLY: "{expected_title}"
-- The section "content": a list of bullet points, each on its own line, each starting with "* " (asterisk + space).
-- Each bullet = ONE clear fact with numbers/dates/tickers/actual/forecast/previous when available.
-- NO summary paragraph at the end. NO "שורה תחתונה". NO "סיכום". NO "תמצית עובדתית". NO "מבט קדימה". NO closing paragraph of any kind.
-- The review ends after the LAST factual bullet — nothing follows.
+- Section 1 "content": a list of bullet points, each on its own line, each starting with "* " (asterisk + space).
+- Each bullet: "* Short topic label: one concise analytical sentence with numbers."
+- Section 2 "content": a flowing paragraph (4-6 sentences). NO bullets in section 2.
 - Do NOT use <b>, <strong>, **, ■, 📍, or any HTML/markdown formatting inside content.
-- Do NOT add a second section. If you are tempted to add one, MERGE that content into the single section as more bullets — but ONLY if the content is factual (drop interpretation/analysis/narrative entirely).
+- Do NOT add extra sections. If you are tempted to add a third section, MERGE that content into section 1 as more bullets.
 """
 
 def get_prompt(tweets, review_type, date_str, day_name, title_date_str=None, title_day_name=None,
@@ -634,109 +592,112 @@ This briefing is written BEFORE the US market opens. The US market opens at 16:3
 - You MAY use 'הבוקר' for overnight news and pre-market data (e.g., 'החוזים העתידיים נסחרים הבוקר בעלייה').
 - ❌ You MUST NOT describe the US market itself as already open, already trading, or having reacted.
 - ❌ FORBIDDEN phrases: 'השוק נפתח הבוקר לסנטימנט...', 'המסחר התנהל...', 'המדד פתח בעלייה', 'המשקיעים הגיבו ב...'
-- ✅ REQUIRED phrases: 'החוזים העתידיים נסחרים בעלייה/ירידה של X%', 'מתוכנן לפרסום ב-XX:XX שעון ישראל', 'ידווחו דוחות'.
-- Futures trading is pre-market and CAN be described in present tense ('החוזים נסחרים בעלייה'). The cash market cannot."""
+- ✅ REQUIRED phrases: 'השוק צפוי להיפתח...', 'עם פתיחת המסחר...', 'המשקיעים יעקבו אחר...', 'התגובה הצפויה...'
+- Futures trading is pre-market and CAN be described in present tense ('החוזים נסחרים בעלייה'). The cash market cannot.
+- When writing the 'שורה תחתונה', assume the cash market has NOT opened yet. Use future tense for all market activity."""
             else:
                 trading_status = f"IMPORTANT: This script runs on {date_str} ({day_name}) but the briefing is for the NEXT trading day: {title_date_str} ({title_day_name}). Do NOT use 'היום' or 'הבוקר' — use 'ביום {title_day_name}' or 'בפתיחת המסחר ביום {title_day_name}' instead. Do NOT mention futures or pre-market data as if they are live right now — they are not available yet."
         else:
             trading_status = f"The target date {title_date_str} is NOT a trading day (weekend or US holiday). State this clearly in the first bullet."
-        return f"""You are a Wall Street news editor producing a FACTUAL pre-market update in Hebrew. This is a NEWS update, NOT analysis.
+        return f"""You are a senior Wall Street market analyst writing a PRE-MARKET briefing in Hebrew.
 
 DATES:
 - Script run date: {date_str} ({day_name})
 - Briefing target date: {title_date_str} ({title_day_name})
 - {trading_status}
 
-CRITICAL — THIS IS A FORWARD-LOOKING FACTUAL UPDATE:
-- DO NOT include yesterday's index performance, closing levels, or any backward-looking data.
+CRITICAL — THIS IS A FORWARD-LOOKING BRIEFING, NOT A SUMMARY:
+- This is an "הכנה ליום מסחר" — what investors need to know BEFORE the market opens.
+- DO NOT include yesterday's index performance, closing levels, or any backward-looking data. ZERO.
 - DO NOT repeat news or events that already appeared in the prior context block above.
-- ALL bullets must be FORWARD-LOOKING facts or about NEW overnight developments.
-- NO analysis, NO interpretation, NO "מה זה אומר למשקיעים", NO market narrative.
+- ALL bullets must be FORWARD-LOOKING or about NEW overnight developments.
 
 {SHARED_RULES}
 
 {format_block}
 
-Include 7-12 factual bullets. Each bullet = ONE fact. Topics:
+Include 7-12 bullets in section 1. Topics:
 1. If the briefing is for a future date, first bullet states when trading resumes.
-2. Pre-market/futures levels with % (only if briefing is for today).
-3. Scheduled US economic data for the target day: data point, Israel time of release, forecast, previous (one bullet per data point).
-4. Companies expected to report earnings today: ticker, expected EPS/revenue if known, time (BMO/AMC).
-5. NEW overnight geopolitical developments — stated factually, no analysis.
-6. NEW overnight company news, analyst rating changes (only if price target moved >20%): ticker, action, new target.
-7. Commodity/currency moves overnight: % change, current level (verified).
+2. Pre-market/futures sentiment ONLY if the briefing is for today.
+3. Scheduled economic data for the target day (Israel times + consensus forecast).
+4. Expected earnings reports today.
+5. NEW overnight geopolitical developments.
+6. NEW overnight company news, analyst upgrades/downgrades.
+7. Commodity/currency moves that signal market direction.
 
-The review ends after the last factual bullet. NO summary section, NO closing paragraph.
+Section 2 ("שורה תחתונה"): 4-5 sentences. IMPORTANT — THE CASH MARKET HAS NOT OPENED YET:
+- Same-day trading session (before 16:30 Israel time): Describe what is EXPECTED at the open, the key tension awaiting the market, what will dictate direction. Use FUTURE TENSE for all market activity ('צפוי להיפתח', 'יעמדו במוקד', 'התגובה תהיה'). FORBIDDEN: 'השוק נפתח', 'המסחר התנהל', 'המדדים הגיבו'.
+- Prepared in advance (e.g., Sunday for Monday): Summarize developments since last session, risks building, what to watch when trading resumes on {title_day_name}. Use "עם פתיחת המסחר ביום {title_day_name}" — NOT "היום".
+- Target day NOT a trading day: Start with "אין מסחר" and focus on the next session.
 
 {tweets_block}
 
-Output ONLY a JSON object with keys: title, date, sections (array of EXACTLY 1 section). No other text."""
+Output ONLY a JSON object with keys: title, date, sections. No other text."""
 
     elif review_type == "daily_summary":
-        return f"""You are a Wall Street news editor producing a FACTUAL end-of-day market update in Hebrew. This is a NEWS update, NOT analysis. Write in PAST TENSE.
+        return f"""You are a senior Wall Street market analyst writing a comprehensive end-of-day market wrap in Hebrew. Your goal is not just to report what happened, but to explain WHY it matters and WHAT it signals for investors. Write in PAST TENSE.
 
 {SHARED_RULES}
 
-CRITICAL — FACTUAL FORMAT:
-- Each bullet = ONE fact with numbers/percentages/tickers.
-- For index performance: ticker, daily % change, point level (verified). NO narrative about "what drove the move".
-- For macro data released today: actual, forecast, previous. NO interpretation, NO Fed implications.
-- For stock moves: $TICKER ±%, optional short factual catalyst (e.g., "לאחר פספוס בדוחות"). NO analysis of what it signals.
-- For geopolitical events: state the event factually with date/time. NO transmission mechanism, NO market implication.
-- ABSOLUTELY NO: "key narrative", "dominant force", "investor positioning shift", "tension or contradiction", "what to watch tomorrow", "connect the dots".
+CRITICAL — ANALYTICAL DEPTH:
+- For index performance: include exact % and point levels, note if it's the best/worst day in X period, explain what drove the move.
+- For macro data released today: actual number, forecast, previous, AND explain the market implication.
+- For stock moves: explain WHY the stock moved, not just the % change.
+- For geopolitical events: explain the transmission mechanism (event → oil → inflation expectations → rate expectations → equity valuations).
+- Connect the dots between different developments — don't just list isolated facts.
 
 {format_block}
 
-Include 7-12 factual bullets, ordered by market impact:
-1. Index performance: S&P 500, Nasdaq 100, Dow, Russell 2000 — daily %, point levels (one bullet per index or one combined bullet).
-2. Macro data released today: data point name, actual, forecast, previous (one bullet per release).
-3. Notable stock moves: $TICKER ±%, optional short factual catalyst.
-4. Commodities and currencies: oil ($/barrel), gold ($/oz), Bitcoin, VIX — % and level (verified).
-5. Sector ETF performance from Finnhub data: XLE/XLK/XLF/XLY/XLV/XLI/XLP/XLU with %.
-6. Specific company news: earnings releases, M&A announcements, FDA decisions, regulatory actions — stated factually.
-7. Fed/Treasury developments: rate decisions, speeches with concrete announcements.
+Include 7-12 bullets in section 1, ordered by market impact:
+1. Index performance (S&P 500, Nasdaq, Dow with %, point levels, context).
+2. Macro data released today with FULL numbers (actual vs forecast vs previous) and market reaction.
+3. Key market-moving events: geopolitics, Fed comments, trade news — with cause-and-effect.
+4. Commodities and currencies: oil, gold, Bitcoin, VIX — with % and explanation.
+5. Notable stock moves with WHY ($TICKER +/- %, what caused it).
+6. Sector rotation (using ONLY Finnhub-provided sector ETF data) or institutional activity if relevant.
 
-The review ends after the last factual bullet. NO summary section, NO closing paragraph.
+Section 2 ("שורה תחתונה"): 4-5 sentences.
+1. The key narrative of today's session — what was the dominant force.
+2. What shifted in investor positioning (risk-on/off, sector preference, rate expectations).
+3. The key tension or contradiction in today's price action.
+4. What specific data, event, or level to watch tomorrow and why it matters.
 
 {tweets_block}
 
-Output ONLY a JSON object with keys: title, date, sections (array of EXACTLY 1 section). No other text."""
+Output ONLY a JSON object with keys: title, date, sections. No other text."""
 
     elif review_type == "weekly_prep":
-        return f"""You are a Wall Street news editor producing a FACTUAL weekly preview in Hebrew. This is a NEWS update, NOT analysis. Write in FUTURE TENSE.
+        return f"""You are a senior Wall Street strategist writing a weekly outlook for Israeli investors in Hebrew.
 
-Your task: List what is SCHEDULED for the trading week of {week_range if week_range else date_str} on Wall Street.
+Your task: Summarize what investors need to know ahead of the trading week of {week_range if week_range else date_str} on Wall Street. Write in FUTURE TENSE.
 
 CRITICAL — TIME FRAME:
 - This preview covers the trading week {week_range if week_range else date_str} ONLY.
 - Include ONLY events, data releases, and catalysts scheduled for THIS specific week.
 - Do NOT include events from previous weeks or events beyond this week's Friday.
 - Do NOT include last week's index performance or closing levels — there is a separate "סיכום שבועי" for that.
-- NO analysis, NO scenarios, NO "what is the market currently pricing in", NO bull/bear framework, NO dominant theme.
 
 {SHARED_RULES}
 
 {format_block}
 
-Include 8-14 factual bullets, ALL forward-looking:
-1. Scheduled US economic data this week: data point, day of release, Israel time, forecast, previous (one bullet per release).
-2. Fed decisions/speeches/minutes scheduled this week: event, day, Israel time.
-3. Major earnings reports scheduled this week: ticker, day, BMO/AMC, expected EPS/revenue if known.
-4. Trade/tariff deadlines or known regulatory dates this week.
-5. Treasury auctions of note (10Y/30Y) this week.
-6. Known geopolitical events on the calendar: meetings, summits, deadlines (factual statement only).
-Do NOT include any bullets about last week's performance or any backward-looking data.
+Include 8-14 bullets in section 1, ALL forward-looking:
+1. Key events coming THIS week: Fed decisions, economic data (NFP, CPI, PMI, GDP, PPI), earnings reports, trade/tariff deadlines, geopolitical developments.
+2. For each event: specific day and Israel time when known.
+3. Geopolitical risks and what to watch for.
+4. Notable companies expected to report earnings this week.
+Do NOT include any bullets about last week's performance. Zero backward-looking data.
 
-The review ends after the last factual bullet. NO summary section, NO closing paragraph.
+Section 2 ("שורה תחתונה"): 4-5 sentences. Start with the ONE dominant theme. Analyze: what is the market currently pricing in, what could surprise to the upside/downside, what combination of events could trigger a significant move. End with a bullish/bearish scenario framework.
 
 {tweets_block}
 
-Output ONLY a JSON object with keys: title, date, sections (array of EXACTLY 1 section). No other text."""
+Output ONLY a JSON object with keys: title, date, sections. No other text."""
 
     elif review_type == "weekly_summary":
-        return f"""You are a Wall Street news editor producing a FACTUAL weekly review in Hebrew. This is a NEWS update, NOT analysis. Write in PAST TENSE.
+        return f"""You are a senior Wall Street strategist writing a comprehensive weekly review for Israeli investors in Hebrew. Write in PAST TENSE.
 
-Your task: List the significant FACTS from the trading week of {week_range if week_range else date_str} on Wall Street.
+Your task: Summarize all significant developments on Wall Street over the trading week of {week_range if week_range else date_str}.
 
 CRITICAL — TIME FRAME:
 - This summary covers the trading week {week_range if week_range else date_str} ONLY.
@@ -750,30 +711,33 @@ CRITICAL — WEEKLY PERFORMANCE:
 
 {SHARED_RULES}
 
-CRITICAL — FACTUAL FORMAT:
-- Each bullet = ONE fact with numbers/percentages/tickers.
-- For macro data: actual, forecast, previous. NO Fed policy interpretation.
-- For index performance: weekly %, point level. NO "leading/lagging sectors narrative" — just list sector ETF % from Finnhub data as separate facts.
-- For geopolitical events: factual statement of the event. NO transmission mechanism, NO market mechanism explanation.
-- For earnings: ticker, EPS actual vs forecast, revenue actual vs forecast. NO "broader trend for the sector".
-- ABSOLUTELY NO: "dominant narrative", "investor positioning shift", "tension or contradiction", "risks that could reverse the trend", "what to watch next week", "connect the dots".
+CRITICAL — ANALYTICAL DEPTH:
+- For EVERY macro data point: actual, forecast/consensus, comparison to previous, AND what it means for Fed policy and markets.
+- For index performance: weekly % change, mention if best/worst week in X months, leading/lagging sectors.
+- For geopolitical events: explain the market mechanism (oil → inflation → rates → equity valuations).
+- For earnings: note the broader trend for the sector/economy.
+- Always connect the dots.
 
 {format_block}
 
-Include 8-14 factual bullets:
-1. Index weekly performance: S&P 500, Nasdaq 100, Dow, Russell 2000 — weekly %, current point level (from verified data).
-2. Sector ETF weekly performance from Finnhub data: XLE/XLK/XLF/XLY/XLV/XLI/XLP/XLU with % (one combined bullet OK).
-3. Macro data released this week: data point name, actual, forecast, previous (one bullet per release — include BOTH headline AND core where applicable).
-4. Fed decisions/minutes/speeches this week: event, date, concrete announcements.
-5. Commodities weekly: oil ($/barrel +/-%), gold ($/oz +/-%), Bitcoin (+/-%).
-6. Notable company news this week: earnings releases (ticker, EPS/revenue actual vs forecast), M&A deals, FDA decisions, regulatory actions.
-7. Key geopolitical events that occurred this week — stated factually.
+Include 8-14 bullets in section 1:
+1. Index performance: S&P 500, Nasdaq, Dow, Russell 2000 — weekly % changes, context, leading/lagging sectors.
+2. Macro data published this week with FULL numbers (CPI headline AND core, NFP, claims, sentiment — actuals, forecasts, market reaction).
+3. Key events that moved markets: geopolitics, Fed comments, trade/tariff news — transmission mechanism.
+4. Commodities with context: oil (weekly change + why), gold, Bitcoin.
+5. Notable company news, earnings, M&A — combined where related.
+6. Earnings season outlook or institutional positioning.
 
-The review ends after the last factual bullet. NO summary section, NO closing paragraph.
+Section 2 ("שורה תחתונה"): 5-6 sentences.
+1. Dominant narrative of the week and what drove it.
+2. Shift in investor positioning.
+3. Key tension/contradiction in the market.
+4. 2-3 specific risks that could reverse the trend.
+5. What to watch next week and why it matters.
 
 {tweets_block}
 
-Output ONLY a JSON object with keys: title, date, sections (array of EXACTLY 1 section). No other text."""
+Output ONLY a JSON object with keys: title, date, sections. No other text."""
 
     elif review_type == "events":
         return f"""You are a financial calendar editor creating an economic events calendar in Hebrew.
@@ -991,13 +955,8 @@ def debullet(text):
 
 def enforce_structure(result, review_type, expected_title):
     """Force the Gemini output to match the structure expected by the HTML renderer.
-    NEW BEHAVIOR (factual single-section format):
-    - Exactly 1 section across ALL review types (live_news, daily_prep, daily_summary,
-      weekly_prep, weekly_summary).
-    - Drop any 'שורה תחתונה'/'סיכום'/'תמצית עובדתית'/'מבט קדימה'/'השלכות'/'משמעות' sections.
-    - Merge factual bullets from remaining sections into one.
-    - Force every non-empty content line to start with '* '.
-    """
+    Fixes: wrong titles, 3-section outputs, wrong headings, mixed bullet styles,
+    and the critical 'שורה תחתונה' heading that enables the gold-highlighted box styling."""
 
     if not isinstance(result, dict):
         print("  ⚠️ enforce_structure: result is not a dict — returning unchanged")
@@ -1018,112 +977,145 @@ def enforce_structure(result, review_type, expected_title):
     # 2. Work on sections
     sections = result.get("sections", [])
     if not isinstance(sections, list) or len(sections) == 0:
-        print("  ⚠️ enforce_structure: no sections — creating empty single-section structure")
-        result["sections"] = [{"heading": first_heading, "content": ""}]
+        print("  ⚠️ enforce_structure: no sections — creating empty structure")
+        if review_type == "live_news":
+            result["sections"] = [{"heading": first_heading, "content": ""}]
+        else:
+            result["sections"] = [
+                {"heading": first_heading, "content": ""},
+                {"heading": "שורה תחתונה", "content": ""},
+            ]
         return result
 
-    # ═══ Identify summary/closing sections to drop ═══
-    # Headings that indicate a closing/summary block we no longer want.
-    # Note: "סיכום" alone is tricky because first_heading may itself be "סיכום המסחר" /
-    # "סיכום השבוע". So we ONLY treat "סיכום" as a drop signal when first_heading does
-    # NOT contain "סיכום".
-    HARD_DROP_KEYWORDS = ["שורה תחתונה", "תמצית עובדתית", "מבט קדימה", "השלכות", "משמעות"]
-    soft_drop_summary = "סיכום" not in first_heading
+    # ═══ live_news: single section, bullets only, no bottom line ═══
+    if review_type == "live_news":
+        # Merge content from all sections Gemini returned into ONE bucket.
+        # If Gemini (wrongly) produced a "שורה תחתונה" section, its content
+        # gets folded into the main bullets rather than discarded — but the
+        # SECTION itself is dropped so the HTML renderer doesn't show a bottom-line box.
+        merged_parts = []
+        for s in sections:
+            c = s.get("content", "")
+            if isinstance(c, list):
+                c = "\n".join(str(x) for x in c)
+            if c and c.strip():
+                merged_parts.append(c.strip())
+        merged = "\n".join(merged_parts)
 
-    def is_drop_section(heading):
-        if not isinstance(heading, str):
-            return False
-        h = heading.strip()
-        for kw in HARD_DROP_KEYWORDS:
-            if kw in h:
-                return True
-        if soft_drop_summary and "סיכום" in h:
-            return True
-        return False
+        # Force bullets. normalize_bullets converts paragraphs/unicode bullets to '* '.
+        normalized = normalize_bullets(merged)
 
-    # ═══ Extract factual bullets from a content blob ═══
-    def extract_bullets(content):
-        """Pull bullet-like lines out of content. Drops prose lines (paragraph summaries)
-        but preserves any line that is already a bullet or that looks like a structured fact."""
-        if isinstance(content, list):
-            content = "\n".join(str(x) for x in content)
-        if not isinstance(content, str) or not content.strip():
-            return []
-        # First normalize bullet markers (•, -, ■ → *)
-        normalized = normalize_bullets(content)
-        out = []
+        # Extra safety for live_news: if after normalization there are still
+        # non-bullet paragraph lines, convert each surviving line to a bullet.
+        # This catches the "wall of text" bug seen in production.
+        fixed_lines = []
+        long_bullets = []
         for line in normalized.split("\n"):
             stripped = line.strip()
             if not stripped:
                 continue
-            if stripped.startswith("* "):
-                out.append(stripped)
-            elif stripped.startswith("- "):
-                out.append("* " + stripped[2:])
+            if stripped.startswith("* ") or stripped.startswith("- "):
+                bullet_line = "* " + stripped[2:] if stripped.startswith("- ") else stripped
+                fixed_lines.append(bullet_line)
+                # Flag bullets that exceed the 30-word soft limit
+                body = bullet_line[2:]
+                word_count = len(body.split())
+                if word_count > 35:
+                    long_bullets.append((word_count, body[:80]))
             else:
-                # Bare line — treat as factual content and bulletize
-                out.append("* " + stripped)
-        return out
+                # Bare paragraph line in live_news — force it into a bullet
+                fixed_lines.append("* " + stripped)
+                word_count = len(stripped.split())
+                if word_count > 35:
+                    long_bullets.append((word_count, stripped[:80]))
+        normalized = "\n".join(fixed_lines)
 
-    # ═══ Walk all sections and collect bullets ═══
-    all_bullets = []
-    dropped_headings = []
-    for s in sections:
-        heading = s.get("heading", "")
-        content = s.get("content", "")
-        if is_drop_section(heading):
-            # Drop the section entirely. Do NOT salvage prose from a closing section —
-            # closing sections contain analysis/narrative we explicitly want gone.
-            dropped_headings.append(heading)
-            continue
-        bullets = extract_bullets(content)
-        all_bullets.extend(bullets)
-
-    if dropped_headings:
-        print(f"  ✅ Dropped {len(dropped_headings)} closing section(s): {dropped_headings}")
-
-    # Defensive: drop any bullet whose body is empty or trivially short
-    cleaned_bullets = []
-    seen = set()
-    for b in all_bullets:
-        body = b[2:].strip() if b.startswith("* ") else b.strip()
-        if len(body) < 3:
-            continue
-        # Deduplicate identical bullets
-        if body in seen:
-            continue
-        seen.add(body)
-        cleaned_bullets.append(b)
-
-    # live_news: warn about overly long bullets (>35 words) per existing convention
-    if review_type == "live_news":
-        long_bullets = []
-        for b in cleaned_bullets:
-            body = b[2:] if b.startswith("* ") else b
-            wc = len(body.split())
-            if wc > 35:
-                long_bullets.append((wc, body[:80]))
         if long_bullets:
-            print(f"  ⚠️  live_news: {len(long_bullets)} bullets exceed 35-word limit:")
+            print(f"  ⚠️  live_news: {len(long_bullets)} bullets exceed 35-word limit (prompt ignored):")
             for wc, preview in long_bullets:
                 print(f"     [{wc} words] {preview}...")
 
-    merged_content = "\n".join(cleaned_bullets)
+        if len(sections) > 1:
+            print(f"  ✅ live_news: merged {len(sections)} sections → 1 (no bottom line)")
+        else:
+            print(f"  ✅ live_news: single section enforced, bullets normalized")
 
-    if len(sections) > 1:
-        print(f"  ✅ Consolidated {len(sections)} section(s) → 1 (single-section factual format)")
-    else:
-        print(f"  ✅ Single section enforced, bullets normalized")
+        result["sections"] = [{
+            "heading": first_heading,
+            "content": normalized,
+        }]
+        return result
 
-    # ═══ Force the single-section heading ═══
-    original_h0 = sections[0].get("heading", "") if sections else ""
+    # ═══ All other review types: exactly 2 sections (main + שורה תחתונה) ═══
+
+    # 3. If more than 2 sections, consolidate
+    if len(sections) > 2:
+        # Pick the section that looks most like a bottom-line paragraph:
+        # prefer sections whose heading mentions "שורה תחתונה"/"סיכום"/"מה זה אומר"/"מבט קדימה",
+        # otherwise prefer the section with the fewest bullets (most prose-like),
+        # otherwise fall back to the last section.
+        def bottom_line_score(s):
+            heading = s.get("heading", "")
+            content = s.get("content", "")
+            if isinstance(content, list):
+                content = "\n".join(content)
+            score = 0
+            for keyword in ["שורה תחתונה", "סיכום", "מבט קדימה", "מה זה אומר", "השלכות", "משמעות"]:
+                if keyword in heading:
+                    score += 100
+            # Prose-like = few bullets, long sentences
+            lines = [l.strip() for l in content.split("\n") if l.strip()]
+            bullet_lines = sum(1 for l in lines if re.match(rf'^(\*|-|\$[A-Z]+:|{_BULLET_CHARS})', l))
+            if bullet_lines <= 1 and len(content) > 100:
+                score += 50
+            # Prefer later sections as tiebreaker
+            return score
+
+        best_idx = max(range(len(sections)), key=lambda i: (bottom_line_score(sections[i]), i))
+        bottom = sections[best_idx]
+        rest = [s for i, s in enumerate(sections) if i != best_idx]
+
+        print(f"  ✅ Consolidating {len(sections)} sections → 2")
+        print(f"     Selected section {best_idx} ('{bottom.get('heading', '')}') as bottom line")
+
+        merged_parts = []
+        for s in rest:
+            c = s.get("content", "")
+            if isinstance(c, list):
+                c = "\n".join(c)
+            if c and c.strip():
+                merged_parts.append(c.strip())
+        merged = "\n".join(merged_parts)
+        sections = [
+            {"heading": first_heading, "content": merged},
+            bottom,
+        ]
+    elif len(sections) == 1:
+        print("  ⚠️ Only 1 section returned — appending empty bottom line")
+        sections.append({"heading": "שורה תחתונה", "content": ""})
+
+    # 4. Force headings
+    original_h0 = sections[0].get("heading", "")
+    original_h1 = sections[1].get("heading", "")
+    sections[0]["heading"] = first_heading
+    sections[1]["heading"] = "שורה תחתונה"
     if original_h0 != first_heading:
-        print(f"  ✅ Section heading overridden: '{original_h0}' → '{first_heading}'")
+        print(f"  ✅ Section 1 heading overridden: '{original_h0}' → '{first_heading}'")
+    if original_h1 != "שורה תחתונה":
+        print(f"  ✅ Section 2 heading overridden: '{original_h1}' → 'שורה תחתונה' (enables gold box styling)")
 
-    result["sections"] = [{
-        "heading": first_heading,
-        "content": merged_content,
-    }]
+    # 5. Normalize content — bullets in section 1, prose in section 2
+    c0 = sections[0].get("content", "")
+    if isinstance(c0, list):
+        c0 = "\n".join(c0)
+    sections[0]["content"] = normalize_bullets(c0)
+
+    c1 = sections[1].get("content", "")
+    if isinstance(c1, list):
+        c1 = " ".join(c1)
+    sections[1]["content"] = debullet(c1)
+
+    result["sections"] = sections
     return result
 
 # ══════════════════════════════════════════════════════════════
@@ -1502,7 +1494,7 @@ COMMON ERRORS TO CATCH:
 - Contradictions: If bullets say market rose sharply, the bottom line must not say "mixed trading".
 - Self-contradicting phrases like "נותרו יציבות עם עלייה של X%" — resolve to one or the other.
 
-OUTPUT: Return the corrected review as valid JSON in EXACTLY the same structure (same title, same single section heading, EXACTLY 1 section regardless of review type — never add a "שורה תחתונה" or summary section). No backticks, no explanations — pure JSON only."""
+OUTPUT: Return the corrected review as valid JSON in EXACTLY the same structure (same title, same section headings, same number of sections — for live_news that means exactly 1 section, for others exactly 2). No backticks, no explanations — pure JSON only."""
 
     try:
         r = requests.post(
