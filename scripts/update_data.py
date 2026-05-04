@@ -1,7 +1,12 @@
 import json, os, re, requests
 from datetime import datetime, timezone, timedelta
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    ZoneInfo = None
 
-ISR_TZ = timezone(timedelta(hours=3))
+# Use real Israel timezone, including daylight-saving changes.
+ISR_TZ = ZoneInfo("Asia/Jerusalem") if ZoneInfo else timezone(timedelta(hours=3))
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 TWITTER_API_KEY = os.environ["TWITTER_API_KEY"]
 FINNHUB_API_KEY = os.environ.get("FINNHUB_API_KEY", "")
@@ -39,6 +44,206 @@ def build_expected_title(review_type, title_day_name, title_date_str, week_range
     return ""
 
 _LAST_MARKET_DATA = {"prices": {}, "pcts": {}}
+
+
+# Deterministic market-direction layer.
+# X remains the news/narrative source. Price direction must come from verified market data.
+_DIRECTION_ASSETS = {
+    "oil": {
+        "symbols": ["USO", "BNO"],
+        "label": "נפט (WTI/Brent proxies)",
+        "terms": ["נפט", "WTI", "Brent", "ברנט", "crude", "oil"],
+    },
+    "gold": {
+        "symbols": ["GLD"],
+        "label": "זהב",
+        "terms": ["זהב", "gold"],
+    },
+    "bitcoin": {
+        "symbols": ["IBIT"],
+        "label": "ביטקוין",
+        "terms": ["ביטקוין", "bitcoin", "BTC", "IBIT"],
+    },
+    "dollar": {
+        "symbols": ["UUP"],
+        "label": "דולר",
+        "terms": ["דולר", "DXY", "UUP"],
+    },
+    "vix": {
+        "symbols": ["VIXY"],
+        "label": "תנודתיות / VIX",
+        "terms": ["VIX", "תנודתיות", "VIXY"],
+    },
+    "long_bonds": {
+        "symbols": ["TLT"],
+        "label": "אג\"ח ארוכות / TLT",
+        "terms": ["TLT", "אג\"ח", "אגח", "Treasury", "תשואות"],
+    },
+}
+
+_UP_WORDS = [
+    "עולה", "עולים", "עלו", "עלה", "עלייה", "בעלייה", "מטפס", "מטפסים", "טיפס", "טיפסו",
+    "מזנק", "מזנקים", "זינק", "זינקו", "קופץ", "קופצים", "התחזק", "התחזקו", "מתחזק", "מתחזקים"
+]
+_DOWN_WORDS = [
+    "יורד", "יורדים", "ירד", "ירדו", "ירידה", "בירידה", "נופל", "נופלים", "נפל", "נפלו",
+    "צונח", "צונחים", "צנח", "צנחו", "נחלש", "נחלשו", "נחלשת", "נחלשים", "מאבד", "מאבדים", "איבד", "איבדו"
+]
+_NEUTRAL_WORDS = ["יציב", "יציבים", "ללא שינוי", "מדשדש", "מדשדשים"]
+
+_DIRECTION_REPLACEMENTS_UP = {
+    "צונחים": "עולים", "צונח": "עולה", "צנחו": "עלו", "צנח": "עלה",
+    "יורדים": "עולים", "יורד": "עולה", "ירדו": "עלו", "ירד": "עלה", "ירידה": "עלייה", "בירידה": "בעלייה",
+    "נופלים": "עולים", "נופל": "עולה", "נפלו": "עלו", "נפל": "עלה",
+    "נחלשים": "מתחזקים", "נחלש": "התחזק", "נחלשו": "התחזקו", "נחלשת": "מתחזקת",
+    "מאבדים": "מוסיפים", "מאבד": "מוסיף", "איבדו": "הוסיפו", "איבד": "הוסיף",
+}
+_DIRECTION_REPLACEMENTS_DOWN = {
+    "מזנקים": "יורדים", "מזנק": "יורד", "זינקו": "ירדו", "זינק": "ירד",
+    "עולים": "יורדים", "עולה": "יורד", "עלו": "ירדו", "עלה": "ירד", "עלייה": "ירידה", "בעלייה": "בירידה",
+    "מטפסים": "יורדים", "מטפס": "יורד", "טיפסו": "ירדו", "טיפס": "ירד",
+    "קופצים": "יורדים", "קופץ": "יורד", "התחזקו": "נחלשו", "התחזק": "נחלש", "מתחזקים": "נחלשים", "מתחזק": "נחלש",
+}
+
+def _direction_from_pct(pct, threshold=0.15):
+    """Return up/down/flat based on percentage change. Threshold avoids noisy micro-moves."""
+    try:
+        pct = float(pct)
+    except Exception:
+        return None
+    if pct >= threshold:
+        return "up"
+    if pct <= -threshold:
+        return "down"
+    return "flat"
+
+def get_verified_asset_directions():
+    """Map asset groups to verified direction using the last Finnhub pull.
+    If proxies disagree, return mixed to force neutral wording."""
+    pcts = _LAST_MARKET_DATA.get("pcts", {}) or {}
+    out = {}
+    for key, meta in _DIRECTION_ASSETS.items():
+        dirs = []
+        vals = []
+        for sym in meta["symbols"]:
+            if sym in pcts:
+                vals.append((sym, pcts[sym]))
+                d = _direction_from_pct(pcts[sym])
+                if d:
+                    dirs.append(d)
+        if not dirs:
+            continue
+        nonflat = [d for d in dirs if d != "flat"]
+        if not nonflat:
+            direction = "flat"
+        elif all(d == nonflat[0] for d in nonflat):
+            direction = nonflat[0]
+        else:
+            direction = "mixed"
+        out[key] = {"direction": direction, "values": vals, "meta": meta}
+    return out
+
+def build_direction_rules(etf_pcts):
+    """Text block injected into the LLM prompt so direction words cannot drift away from data."""
+    if not etf_pcts:
+        return []
+    # Temporarily use the supplied pct map rather than the global, which is set later in fetch_market_data.
+    old = dict(_LAST_MARKET_DATA.get("pcts", {}))
+    try:
+        _LAST_MARKET_DATA["pcts"] = etf_pcts
+        directions = get_verified_asset_directions()
+    finally:
+        _LAST_MARKET_DATA["pcts"] = old
+    if not directions:
+        return []
+    he = {"up": "עולה", "down": "יורד", "flat": "יציב/כמעט ללא שינוי", "mixed": "מעורב - להשתמש בניסוח ניטרלי בלבד"}
+    lines = ["DIRECTIONAL FACTS — use these for words like עולה/יורד/צונח/מזנק:"]
+    for key, info in directions.items():
+        vals = ", ".join(f"{sym}: {pct:+.2f}%" for sym, pct in info["values"])
+        lines.append(f"  {info['meta']['label']}: {he.get(info['direction'], info['direction'])} ({vals})")
+    lines.extend([
+        "RULE: Directional Hebrew words MUST match the direction above.",
+        "If oil direction is up, NEVER write צונח/יורד/נחלש for oil. If oil direction is down, NEVER write מזנק/עולה/מטפס for oil.",
+        "If direction is flat or mixed, use neutral wording such as 'נע בתנודתיות' or omit the direction."
+    ])
+    return lines
+
+def _contains_any(text, words):
+    return any(w in text for w in words)
+
+def _sentence_has_asset(sentence, terms):
+    s = sentence.lower()
+    return any(t.lower() in s for t in terms)
+
+def _replace_direction_words(sentence, direction):
+    repl = _DIRECTION_REPLACEMENTS_UP if direction == "up" else _DIRECTION_REPLACEMENTS_DOWN
+    for src, dst in sorted(repl.items(), key=lambda x: -len(x[0])):
+        sentence = re.sub(rf'(?<!\w){re.escape(src)}(?!\w)', dst, sentence)
+    return sentence
+
+def apply_market_direction_guard(result, review_type):
+    """Deterministic post-check: fixes or neutralizes direction words that contradict verified market data.
+    This catches errors like 'מחירי הנפט צונחים' when USO/BNO show oil proxies rising."""
+    if not isinstance(result, dict):
+        return result
+    directions = get_verified_asset_directions()
+    if not directions:
+        return result
+
+    def fix_text(text):
+        if not isinstance(text, str):
+            return text
+
+        def fix_sentence(sent):
+            changed_local = False
+            for info in directions.values():
+                direction = info["direction"]
+                terms = info["meta"]["terms"]
+                if not _sentence_has_asset(sent, terms):
+                    continue
+                has_up = _contains_any(sent, _UP_WORDS)
+                has_down = _contains_any(sent, _DOWN_WORDS)
+                # If both up and down words appear, the sentence may contain context such as
+                # "עלה לאחר שירד אתמול". Do not auto-rewrite mixed internal context.
+                if direction == "up" and has_down and not has_up:
+                    sent = _replace_direction_words(sent, "up")
+                    changed_local = True
+                    print(f"  ✅ Direction guard fixed contradiction: {info['meta']['label']} should be UP")
+                elif direction == "down" and has_up and not has_down:
+                    sent = _replace_direction_words(sent, "down")
+                    changed_local = True
+                    print(f"  ✅ Direction guard fixed contradiction: {info['meta']['label']} should be DOWN")
+                elif direction in ("flat", "mixed") and (has_up or has_down):
+                    # Avoid false precision when verified proxies are flat or conflicting.
+                    sent = re.sub(r'(מזנקים|מזנק|זינקו|זינק|מטפסים|מטפס|טיפסו|טיפס|עולים|עולה|עלו|עלה|בעלייה|יורדים|יורד|ירדו|ירד|בירידה|צונחים|צונח|צנחו|צנח|נופלים|נופל|נפלו|נפל|נחלשים|נחלש|נחלשו|נחלשת)', 'נעים בתנודתיות', sent)
+                    changed_local = True
+                    print(f"  ✅ Direction guard neutralized mixed/flat direction: {info['meta']['label']}")
+            return sent, changed_local
+
+        changed = False
+        out_lines = []
+        for line in text.split('\n'):
+            parts = re.split(r'(?<=[\.\!\?])\s+', line)
+            fixed_parts = []
+            for sent in parts:
+                fixed, did_change = fix_sentence(sent)
+                changed = changed or did_change
+                fixed_parts.append(fixed)
+            out_lines.append(' '.join(fixed_parts))
+        return '\n'.join(out_lines) if changed else text
+
+    for section in result.get("sections", []):
+        content = section.get("content")
+        if isinstance(content, str):
+            section["content"] = fix_text(content)
+        elif isinstance(content, list):
+            section["content"] = [fix_text(x) if isinstance(x, str) else x for x in content]
+    for item in result.get("items", []):
+        if isinstance(item.get("description"), str):
+            item["description"] = fix_text(item["description"])
+        if isinstance(item.get("title"), str):
+            item["title"] = fix_text(item["title"])
+    return result
 
 # ══════════════════════════════════════════════════════════════
 # MARKET DATA — FINNHUB
@@ -170,6 +375,11 @@ def fetch_market_data(weekly=False):
         result_lines.append("")
         result_lines.append("WEEKLY PERFORMANCE (use these for weekly summary, NOT the daily numbers):")
         result_lines.extend(weekly_lines)
+
+    direction_rules = build_direction_rules(etf_pcts)
+    if direction_rules:
+        result_lines.append("")
+        result_lines.extend(direction_rules)
 
     result_lines.extend([
         "",
@@ -452,6 +662,7 @@ CRITICAL — KEY MARKET DATA (MANDATORY VERIFICATION):
 - You MUST verify via Google Search the current prices of: Brent crude oil, WTI crude oil, gold, and any other commodity you mention.
 - If a tweet states a price that seems extreme or unusual, you MUST verify it via Google Search before including it.
 - NEVER trust a single tweet for major price data. Always cross-reference.
+- Directional words are factual claims. Words like "צונח", "יורד", "נחלש", "מזנק", "עולה", "מטפס" MUST match the verified market-data direction block. If verified data says oil is up, do not write oil is falling, even if a tweet's wording suggests pressure.
 - NEVER write vague descriptions like "the market closed in green territory" or "mixed trading" without exact numbers.
 - NEVER claim an index or stock is at an "all-time high" (שיא / שיא כל הזמנים) unless you verify it via Google Search.
 
@@ -476,8 +687,8 @@ CRITICAL — DATA ACCURACY:
 - Getting a number wrong destroys credibility. When in doubt, omit.
 
 CRITICAL — CONSISTENCY:
-- The "שורה תחתונה" paragraph MUST be consistent with the bullet points above it.
-- Read your own bullets before writing the bottom line.
+- Every bullet must be internally consistent with the verified market data above.
+- Do NOT add a separate "שורה תחתונה" section, closing paragraph, or summary section.
 
 CRITICAL — FINANCIAL TERMINOLOGY:
 - Use precise Hebrew financial terms. IPO (הנפקה ראשונית לציבור) is NOT the same as ETF (תעודת סל).
@@ -545,19 +756,18 @@ USE ONLY THESE TIMES. Do NOT calculate your own offset."""
 
 # ── Output format block — uniform across all review types ──
 def get_output_format_block(first_heading, expected_title):
-    """Standard, rigid output-format spec. This is what fixes the '3 sections instead of 2' bug
-    and the 'bottom line never gets special styling' bug."""
+    """Standard, rigid output-format spec. All review types use one section only.
+    The dedicated 'שורה תחתונה' section has been removed by design."""
     return f"""
 CRITICAL — OUTPUT FORMAT (MANDATORY, NOT NEGOTIABLE):
-- Output EXACTLY 2 sections in the "sections" array. Not 1, not 3, not 4. EXACTLY 2.
-- Section 1: heading MUST be EXACTLY "{first_heading}" (no variations, no emojis, no added words).
-- Section 2: heading MUST be EXACTLY "שורה תחתונה" (no variations).
+- Output EXACTLY 1 section in the "sections" array. Not 2, not 3, not 4. EXACTLY 1.
+- The only section heading MUST be EXACTLY "{first_heading}" (no variations, no emojis, no added words).
 - The "title" field MUST be EXACTLY: "{expected_title}"
-- Section 1 "content": a list of bullet points, each on its own line, each starting with "* " (asterisk + space).
+- The only section "content": a list of bullet points, each on its own line, each starting with "* " (asterisk + space).
 - Each bullet: "* Short topic label: one concise analytical sentence with numbers."
-- Section 2 "content": a flowing paragraph (4-6 sentences). NO bullets in section 2.
+- Do NOT add a "שורה תחתונה", "סיכום", "מסקנה", or any closing paragraph as a separate section.
 - Do NOT use <b>, <strong>, **, ■, 📍, or any HTML/markdown formatting inside content.
-- Do NOT add extra sections. If you are tempted to add a third section, MERGE that content into section 1 as more bullets.
+- Do NOT add extra sections. If you are tempted to add another section, MERGE that content into the only section as more bullets.
 """
 
 def get_prompt(tweets, review_type, date_str, day_name, title_date_str=None, title_day_name=None,
@@ -594,7 +804,7 @@ This briefing is written BEFORE the US market opens. The US market opens at 16:3
 - ❌ FORBIDDEN phrases: 'השוק נפתח הבוקר לסנטימנט...', 'המסחר התנהל...', 'המדד פתח בעלייה', 'המשקיעים הגיבו ב...'
 - ✅ REQUIRED phrases: 'השוק צפוי להיפתח...', 'עם פתיחת המסחר...', 'המשקיעים יעקבו אחר...', 'התגובה הצפויה...'
 - Futures trading is pre-market and CAN be described in present tense ('החוזים נסחרים בעלייה'). The cash market cannot.
-- When writing the 'שורה תחתונה', assume the cash market has NOT opened yet. Use future tense for all market activity."""
+- Do NOT add a separate 'שורה תחתונה' section. Keep all content in the only section, using bullets."""
             else:
                 trading_status = f"IMPORTANT: This script runs on {date_str} ({day_name}) but the briefing is for the NEXT trading day: {title_date_str} ({title_day_name}). Do NOT use 'היום' or 'הבוקר' — use 'ביום {title_day_name}' or 'בפתיחת המסחר ביום {title_day_name}' instead. Do NOT mention futures or pre-market data as if they are live right now — they are not available yet."
         else:
@@ -616,7 +826,7 @@ CRITICAL — THIS IS A FORWARD-LOOKING BRIEFING, NOT A SUMMARY:
 
 {format_block}
 
-Include 7-12 bullets in section 1. Topics:
+Include 7-12 bullets in the only section. Topics:
 1. If the briefing is for a future date, first bullet states when trading resumes.
 2. Pre-market/futures sentiment ONLY if the briefing is for today.
 3. Scheduled economic data for the target day (Israel times + consensus forecast).
@@ -625,10 +835,7 @@ Include 7-12 bullets in section 1. Topics:
 6. NEW overnight company news, analyst upgrades/downgrades.
 7. Commodity/currency moves that signal market direction.
 
-Section 2 ("שורה תחתונה"): 4-5 sentences. IMPORTANT — THE CASH MARKET HAS NOT OPENED YET:
-- Same-day trading session (before 16:30 Israel time): Describe what is EXPECTED at the open, the key tension awaiting the market, what will dictate direction. Use FUTURE TENSE for all market activity ('צפוי להיפתח', 'יעמדו במוקד', 'התגובה תהיה'). FORBIDDEN: 'השוק נפתח', 'המסחר התנהל', 'המדדים הגיבו'.
-- Prepared in advance (e.g., Sunday for Monday): Summarize developments since last session, risks building, what to watch when trading resumes on {title_day_name}. Use "עם פתיחת המסחר ביום {title_day_name}" — NOT "היום".
-- Target day NOT a trading day: Start with "אין מסחר" and focus on the next session.
+No Section 2. Do NOT add a "שורה תחתונה" section. Put any concluding insight as a regular bullet inside the only section.
 
 {tweets_block}
 
@@ -648,7 +855,7 @@ CRITICAL — ANALYTICAL DEPTH:
 
 {format_block}
 
-Include 7-12 bullets in section 1, ordered by market impact:
+Include 7-12 bullets in the only section, ordered by market impact:
 1. Index performance (S&P 500, Nasdaq, Dow with %, point levels, context).
 2. Macro data released today with FULL numbers (actual vs forecast vs previous) and market reaction.
 3. Key market-moving events: geopolitics, Fed comments, trade news — with cause-and-effect.
@@ -656,11 +863,7 @@ Include 7-12 bullets in section 1, ordered by market impact:
 5. Notable stock moves with WHY ($TICKER +/- %, what caused it).
 6. Sector rotation (using ONLY Finnhub-provided sector ETF data) or institutional activity if relevant.
 
-Section 2 ("שורה תחתונה"): 4-5 sentences.
-1. The key narrative of today's session — what was the dominant force.
-2. What shifted in investor positioning (risk-on/off, sector preference, rate expectations).
-3. The key tension or contradiction in today's price action.
-4. What specific data, event, or level to watch tomorrow and why it matters.
+No Section 2. Do NOT add a "שורה תחתונה" section. Put any concluding insight as a regular bullet inside the only section.
 
 {tweets_block}
 
@@ -681,14 +884,14 @@ CRITICAL — TIME FRAME:
 
 {format_block}
 
-Include 8-14 bullets in section 1, ALL forward-looking:
+Include 8-14 bullets in the only section, ALL forward-looking:
 1. Key events coming THIS week: Fed decisions, economic data (NFP, CPI, PMI, GDP, PPI), earnings reports, trade/tariff deadlines, geopolitical developments.
 2. For each event: specific day and Israel time when known.
 3. Geopolitical risks and what to watch for.
 4. Notable companies expected to report earnings this week.
 Do NOT include any bullets about last week's performance. Zero backward-looking data.
 
-Section 2 ("שורה תחתונה"): 4-5 sentences. Start with the ONE dominant theme. Analyze: what is the market currently pricing in, what could surprise to the upside/downside, what combination of events could trigger a significant move. End with a bullish/bearish scenario framework.
+No Section 2. Do NOT add a "שורה תחתונה" section. Put any concluding insight as a regular bullet inside the only section.
 
 {tweets_block}
 
@@ -720,7 +923,7 @@ CRITICAL — ANALYTICAL DEPTH:
 
 {format_block}
 
-Include 8-14 bullets in section 1:
+Include 8-14 bullets in the only section:
 1. Index performance: S&P 500, Nasdaq, Dow, Russell 2000 — weekly % changes, context, leading/lagging sectors.
 2. Macro data published this week with FULL numbers (CPI headline AND core, NFP, claims, sentiment — actuals, forecasts, market reaction).
 3. Key events that moved markets: geopolitics, Fed comments, trade/tariff news — transmission mechanism.
@@ -728,12 +931,7 @@ Include 8-14 bullets in section 1:
 5. Notable company news, earnings, M&A — combined where related.
 6. Earnings season outlook or institutional positioning.
 
-Section 2 ("שורה תחתונה"): 5-6 sentences.
-1. Dominant narrative of the week and what drove it.
-2. Shift in investor positioning.
-3. Key tension/contradiction in the market.
-4. 2-3 specific risks that could reverse the trend.
-5. What to watch next week and why it matters.
+No Section 2. Do NOT add a "שורה תחתונה" section. Put any concluding insight as a regular bullet inside the only section.
 
 {tweets_block}
 
@@ -937,7 +1135,7 @@ def normalize_bullets(text):
     return "\n".join(l for l in result if l.strip() or not l)
 
 def debullet(text):
-    """Remove bullet markers from paragraph text (the bottom-line section should be prose)."""
+    """Remove bullet markers from paragraph text."""
     if not isinstance(text, str) or not text.strip():
         return text
     lines = text.split("\n")
@@ -955,8 +1153,7 @@ def debullet(text):
 
 def enforce_structure(result, review_type, expected_title):
     """Force the Gemini output to match the structure expected by the HTML renderer.
-    Fixes: wrong titles, 3-section outputs, wrong headings, mixed bullet styles,
-    and the critical 'שורה תחתונה' heading that enables the gold-highlighted box styling."""
+    All review pages now use one section only. A dedicated 'שורה תחתונה' section is dropped."""
 
     if not isinstance(result, dict):
         print("  ⚠️ enforce_structure: result is not a dict — returning unchanged")
@@ -977,145 +1174,45 @@ def enforce_structure(result, review_type, expected_title):
     # 2. Work on sections
     sections = result.get("sections", [])
     if not isinstance(sections, list) or len(sections) == 0:
-        print("  ⚠️ enforce_structure: no sections — creating empty structure")
-        if review_type == "live_news":
-            result["sections"] = [{"heading": first_heading, "content": ""}]
-        else:
-            result["sections"] = [
-                {"heading": first_heading, "content": ""},
-                {"heading": "שורה תחתונה", "content": ""},
-            ]
+        print("  ⚠️ enforce_structure: no sections — creating one empty section")
+        result["sections"] = [{"heading": first_heading, "content": ""}]
         return result
 
-    # ═══ live_news: single section, bullets only, no bottom line ═══
-    if review_type == "live_news":
-        # Merge content from all sections Gemini returned into ONE bucket.
-        # If Gemini (wrongly) produced a "שורה תחתונה" section, its content
-        # gets folded into the main bullets rather than discarded — but the
-        # SECTION itself is dropped so the HTML renderer doesn't show a bottom-line box.
-        merged_parts = []
+    # 3. Drop explicit bottom-line sections and merge everything else into one section
+    merged_parts = []
+    dropped_bottom_lines = 0
+    for s in sections:
+        heading = str(s.get("heading", ""))
+        c = s.get("content", "")
+        if isinstance(c, list):
+            c = "\n".join(str(x) for x in c)
+
+        if "שורה תחתונה" in heading or heading.lower().strip() in {"bottom line", "the bottom line"}:
+            dropped_bottom_lines += 1
+            continue
+
+        if c and str(c).strip():
+            merged_parts.append(str(c).strip())
+
+    if not merged_parts:
+        # Safety: if Gemini returned only a bottom-line section, keep its content but under the main heading
         for s in sections:
             c = s.get("content", "")
             if isinstance(c, list):
                 c = "\n".join(str(x) for x in c)
-            if c and c.strip():
-                merged_parts.append(c.strip())
-        merged = "\n".join(merged_parts)
+            if c and str(c).strip():
+                merged_parts.append(str(c).strip())
 
-        # Force bullets. normalize_bullets converts paragraphs/unicode bullets to '* '.
-        normalized = normalize_bullets(merged)
+    merged = "\n".join(merged_parts)
+    normalized = normalize_bullets(merged)
 
-        # Extra safety for live_news: if after normalization there are still
-        # non-bullet paragraph lines, convert each surviving line to a bullet.
-        # This catches the "wall of text" bug seen in production.
-        fixed_lines = []
-        long_bullets = []
-        for line in normalized.split("\n"):
-            stripped = line.strip()
-            if not stripped:
-                continue
-            if stripped.startswith("* ") or stripped.startswith("- "):
-                bullet_line = "* " + stripped[2:] if stripped.startswith("- ") else stripped
-                fixed_lines.append(bullet_line)
-                # Flag bullets that exceed the 30-word soft limit
-                body = bullet_line[2:]
-                word_count = len(body.split())
-                if word_count > 35:
-                    long_bullets.append((word_count, body[:80]))
-            else:
-                # Bare paragraph line in live_news — force it into a bullet
-                fixed_lines.append("* " + stripped)
-                word_count = len(stripped.split())
-                if word_count > 35:
-                    long_bullets.append((word_count, stripped[:80]))
-        normalized = "\n".join(fixed_lines)
+    if len(sections) != 1 or dropped_bottom_lines:
+        print(f"  ✅ Sections normalized: {len(sections)} → 1; dropped bottom-line sections: {dropped_bottom_lines}")
 
-        if long_bullets:
-            print(f"  ⚠️  live_news: {len(long_bullets)} bullets exceed 35-word limit (prompt ignored):")
-            for wc, preview in long_bullets:
-                print(f"     [{wc} words] {preview}...")
-
-        if len(sections) > 1:
-            print(f"  ✅ live_news: merged {len(sections)} sections → 1 (no bottom line)")
-        else:
-            print(f"  ✅ live_news: single section enforced, bullets normalized")
-
-        result["sections"] = [{
-            "heading": first_heading,
-            "content": normalized,
-        }]
-        return result
-
-    # ═══ All other review types: exactly 2 sections (main + שורה תחתונה) ═══
-
-    # 3. If more than 2 sections, consolidate
-    if len(sections) > 2:
-        # Pick the section that looks most like a bottom-line paragraph:
-        # prefer sections whose heading mentions "שורה תחתונה"/"סיכום"/"מה זה אומר"/"מבט קדימה",
-        # otherwise prefer the section with the fewest bullets (most prose-like),
-        # otherwise fall back to the last section.
-        def bottom_line_score(s):
-            heading = s.get("heading", "")
-            content = s.get("content", "")
-            if isinstance(content, list):
-                content = "\n".join(content)
-            score = 0
-            for keyword in ["שורה תחתונה", "סיכום", "מבט קדימה", "מה זה אומר", "השלכות", "משמעות"]:
-                if keyword in heading:
-                    score += 100
-            # Prose-like = few bullets, long sentences
-            lines = [l.strip() for l in content.split("\n") if l.strip()]
-            bullet_lines = sum(1 for l in lines if re.match(rf'^(\*|-|\$[A-Z]+:|{_BULLET_CHARS})', l))
-            if bullet_lines <= 1 and len(content) > 100:
-                score += 50
-            # Prefer later sections as tiebreaker
-            return score
-
-        best_idx = max(range(len(sections)), key=lambda i: (bottom_line_score(sections[i]), i))
-        bottom = sections[best_idx]
-        rest = [s for i, s in enumerate(sections) if i != best_idx]
-
-        print(f"  ✅ Consolidating {len(sections)} sections → 2")
-        print(f"     Selected section {best_idx} ('{bottom.get('heading', '')}') as bottom line")
-
-        merged_parts = []
-        for s in rest:
-            c = s.get("content", "")
-            if isinstance(c, list):
-                c = "\n".join(c)
-            if c and c.strip():
-                merged_parts.append(c.strip())
-        merged = "\n".join(merged_parts)
-        sections = [
-            {"heading": first_heading, "content": merged},
-            bottom,
-        ]
-    elif len(sections) == 1:
-        print("  ⚠️ Only 1 section returned — appending empty bottom line")
-        sections.append({"heading": "שורה תחתונה", "content": ""})
-
-    # 4. Force headings
-    original_h0 = sections[0].get("heading", "")
-    original_h1 = sections[1].get("heading", "")
-    sections[0]["heading"] = first_heading
-    sections[1]["heading"] = "שורה תחתונה"
-    if original_h0 != first_heading:
-        print(f"  ✅ Section 1 heading overridden: '{original_h0}' → '{first_heading}'")
-    if original_h1 != "שורה תחתונה":
-        print(f"  ✅ Section 2 heading overridden: '{original_h1}' → 'שורה תחתונה' (enables gold box styling)")
-
-    # 5. Normalize content — bullets in section 1, prose in section 2
-    c0 = sections[0].get("content", "")
-    if isinstance(c0, list):
-        c0 = "\n".join(c0)
-    sections[0]["content"] = normalize_bullets(c0)
-
-    c1 = sections[1].get("content", "")
-    if isinstance(c1, list):
-        c1 = " ".join(c1)
-    sections[1]["content"] = debullet(c1)
-
-    result["sections"] = sections
+    result["sections"] = [{
+        "heading": first_heading,
+        "content": normalized,
+    }]
     return result
 
 # ══════════════════════════════════════════════════════════════
@@ -1491,8 +1588,9 @@ COMMON ERRORS TO CATCH:
 - Claude is by Anthropic, ChatGPT is by OpenAI, Gemini is by Google.
 - IPO ≠ ETF.
 - ADP Employment Report is MONTHLY, not weekly. Any "weekly ADP" number is a hallucination — remove it.
-- Contradictions: If bullets say market rose sharply, the bottom line must not say "mixed trading".
+- Contradictions: if one bullet says the market rose sharply, another bullet must not describe mixed or weak trading without explaining the distinction.
 - Self-contradicting phrases like "נותרו יציבות עם עלייה של X%" — resolve to one or the other.
+- Directional wording must match the verified market data. If oil proxies are positive, phrases like "מחירי הנפט צונחים" are factual errors. If oil proxies are negative, phrases like "מחירי הנפט מזנקים" are factual errors.
 
 OUTPUT: Return the corrected review as valid JSON in EXACTLY the same structure (same title, same section headings, same number of sections — for live_news that means exactly 1 section, for others exactly 2). No backticks, no explanations — pure JSON only."""
 
@@ -1697,6 +1795,10 @@ def main():
     # Layer 4: Gemini Flash fact-checker — uses provenance warnings to drop unverifiable bullets
     print("\n── Layer 4: Gemini fact-checker ──")
     result = fact_check_with_gemini(result, market_data, REVIEW_TYPE, provenance_warnings=provenance_warnings)
+
+    # Layer 4b: Deterministic market-direction guard — fixes words like צונח/מזנק if they contradict Finnhub data
+    print("\n── Layer 4b: Market direction guard ──")
+    result = apply_market_direction_guard(result, REVIEW_TYPE)
 
     # Layer 5: Re-enforce structure (defensive — fact-checker sometimes alters section headings)
     print("\n── Layer 5: Final structure enforcement ──")
