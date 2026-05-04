@@ -15,6 +15,25 @@ on:
           - weekly_summary
           - events
           - live_news
+  schedule:
+    # Times are UTC. Israel time is usually UTC+2/UTC+3, so keep the Python script responsible for titles/date logic.
+    # Daily prep: 13:30 Israel is usually 10:30 UTC during DST.
+    - cron: '30 10 * * 1-5'
+    # Daily summary: 23:30 Israel is usually 20:30 UTC during DST.
+    - cron: '30 20 * * 1-5'
+    # Weekly prep: Sunday 13:00 Israel.
+    - cron: '00 10 * * 0'
+    # Weekly summary: Saturday 01:00 Israel is Friday 22:00 UTC during DST.
+    - cron: '00 22 * * 5'
+    # Live news snapshot during US market hours, optional. Adjust/remove if quota is an issue.
+    - cron: '00 14,16,18,20 * * 1-5'
+
+concurrency:
+  group: wallstreet-il-update
+  cancel-in-progress: false
+
+permissions:
+  contents: write
 
 jobs:
   update:
@@ -29,23 +48,29 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
-      - name: Determine review type from schedule
+      - name: Determine review type from trigger
         id: type
+        shell: bash
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "type=${{ github.event.inputs.review_type }}" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          HOUR=$(date -u +%H)
+          MIN=$(date -u +%M)
+          DOW=$(date -u +%u) # 1=Mon ... 7=Sun
+
+          if [ "$DOW" = "7" ] && [ "$HOUR" = "10" ]; then
+            echo "type=weekly_prep" >> $GITHUB_OUTPUT
+          elif [ "$DOW" = "5" ] && [ "$HOUR" = "22" ]; then
+            echo "type=weekly_summary" >> $GITHUB_OUTPUT
+          elif [ "$HOUR" = "10" ] && [ "$MIN" = "30" ]; then
+            echo "type=daily_prep" >> $GITHUB_OUTPUT
+          elif [ "$HOUR" = "20" ] && [ "$MIN" = "30" ]; then
+            echo "type=daily_summary" >> $GITHUB_OUTPUT
           else
-            HOUR=$(date -u +%H)
-            DOW=$(date -u +%u)
-            if [ "$DOW" = "7" ]; then
-              echo "type=weekly_prep" >> $GITHUB_OUTPUT
-            elif [ "$DOW" = "5" ] && [ "$HOUR" -ge 21 ]; then
-              echo "type=weekly_summary" >> $GITHUB_OUTPUT
-            elif [ "$HOUR" -lt 15 ]; then
-              echo "type=daily_prep" >> $GITHUB_OUTPUT
-            else
-              echo "type=daily_summary" >> $GITHUB_OUTPUT
-            fi
+            echo "type=live_news" >> $GITHUB_OUTPUT
           fi
 
       - name: Run update script
@@ -57,6 +82,7 @@ jobs:
         run: python scripts/update_data.py
 
       - name: Commit and push changes
+        shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
