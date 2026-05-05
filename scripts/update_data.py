@@ -245,6 +245,122 @@ def apply_market_direction_guard(result, review_type):
             item["title"] = fix_text(item["title"])
     return result
 
+
+# Deterministic language/price safety layer.
+# Purpose: avoid embarrassing claims like "PLTR מזנקת" without a verified % move,
+# and avoid stale absolute commodity prices such as gold at $2,380.
+_STRONG_HYPE_WORDS = [
+    "מזנקת", "מזנק", "מזנקים", "זינקה", "זינק", "זינקו", "קופצת", "קופץ", "קופצים",
+    "טסה", "טס", "טסות", "טסים", "ריסקה", "מרסקת", "מפוצצת", "התפוצצה"
+]
+_HYPE_REPLACEMENTS = {
+    "ממשיכה לזנק במסחר המוקדם": "צפויה לרכז עניין במסחר המוקדם",
+    "ממשיכה לזנק": "מרכזת עניין",
+    "מזנקת במסחר המוקדם": "מגיבה במסחר המוקדם",
+    "מזנק במסחר המוקדם": "מגיב במסחר המוקדם",
+    "מזנקים במסחר המוקדם": "מגיבים במסחר המוקדם",
+    "מזנקת": "מרכזת עניין",
+    "מזנק": "מרכז עניין",
+    "מזנקים": "מרכזים עניין",
+    "זינקה": "עלתה",
+    "זינק": "עלה",
+    "זינקו": "עלו",
+    "קופצת": "עולה",
+    "קופץ": "עולה",
+    "קופצים": "עולים",
+    "טסה": "עולה",
+    "טס": "עולה",
+    "טסות": "עולות",
+    "טסים": "עולים",
+    "ריסקה את התחזיות": "עקפה את התחזיות",
+    "מרסקת את התחזיות": "עוקפת את התחזיות",
+    "התפוצצה": "עלתה",
+    "מפוצצת": "חזקה",
+}
+_PERCENT_RE = re.compile(r'(?<!\d)(?:\+|-)?\d+(?:\.\d+)?\s*%')
+_COMMODITY_TERMS = ["זהב", "gold", "נפט", "oil", "WTI", "Brent", "ברנט"]
+_COMMODITY_PRICE_RE = re.compile(
+    r'(?:\s*(?:ו)?נסחר(?:ת|ים)?\s*(?:סביב|ברמה של|באזור)?\s*)?'
+    r'(?:סביב\s*|ברמה של\s*|באזור\s*)?'
+    r'\$?\s*\d{1,3}(?:,\d{3})*(?:\.\d+)?\s*דולר\s*(?:לאונקיה|לאונקייה|לחבית)?',
+    re.IGNORECASE
+)
+
+
+def _sentence_has_percent(sentence):
+    return bool(_PERCENT_RE.search(sentence or ""))
+
+
+def _neutralize_unverified_hype_sentence(sentence):
+    """If a sentence uses strong stock-move language without a verified %, neutralize it."""
+    if not isinstance(sentence, str) or not sentence.strip():
+        return sentence
+    # If the sentence includes a percentage move, leave it alone; the number provenance layer handles numbers.
+    if _sentence_has_percent(sentence):
+        return sentence
+    if not any(w in sentence for w in _STRONG_HYPE_WORDS):
+        return sentence
+    out = sentence
+    for src, dst in sorted(_HYPE_REPLACEMENTS.items(), key=lambda x: -len(x[0])):
+        out = out.replace(src, dst)
+    return out
+
+
+def _remove_unverified_commodity_prices_sentence(sentence):
+    """Remove absolute commodity dollar levels unless they were externally verified.
+    The script has reliable ETF/proxy direction from Finnhub, but not spot gold/oil levels.
+    """
+    if not isinstance(sentence, str) or not sentence.strip():
+        return sentence
+    low = sentence.lower()
+    if not any(term.lower() in low for term in _COMMODITY_TERMS):
+        return sentence
+    out = _COMMODITY_PRICE_RE.sub("", sentence)
+    # Clean awkward leftovers caused by removing the price phrase.
+    out = re.sub(r'\s+ו\s*\.', '.', out)
+    out = re.sub(r'\s{2,}', ' ', out)
+    out = out.replace(' ,', ',').replace(' .', '.')
+    out = re.sub(r'\s*,\s*\.', '.', out)
+    return out.strip()
+
+
+def apply_strict_language_and_price_guard(result, review_type):
+    """Final deterministic safety guard.
+    - Avoids unverified hype verbs such as "מזנקת" without a % move.
+    - Removes absolute gold/oil dollar prices, because stale commodity levels are a major error source.
+    """
+    if not isinstance(result, dict):
+        return result
+
+    def fix_text(text):
+        if not isinstance(text, str):
+            return text
+        out_lines = []
+        for line in text.split('\n'):
+            parts = re.split(r'(?<=[\.\!\?])\s+', line)
+            fixed_parts = []
+            for sent in parts:
+                sent = _neutralize_unverified_hype_sentence(sent)
+                sent = _remove_unverified_commodity_prices_sentence(sent)
+                fixed_parts.append(sent)
+            out_lines.append(' '.join(p for p in fixed_parts if p is not None))
+        return '\n'.join(out_lines)
+
+    if isinstance(result.get("title"), str):
+        result["title"] = fix_text(result["title"])
+    for section in result.get("sections", []) or []:
+        content = section.get("content")
+        if isinstance(content, list):
+            section["content"] = [fix_text(str(x)) for x in content]
+        elif isinstance(content, str):
+            section["content"] = fix_text(content)
+    for item in result.get("items", []) or []:
+        if isinstance(item.get("description"), str):
+            item["description"] = fix_text(item["description"])
+        if isinstance(item.get("title"), str):
+            item["title"] = fix_text(item["title"])
+    return result
+
 # ══════════════════════════════════════════════════════════════
 # MARKET DATA — FINNHUB
 # ══════════════════════════════════════════════════════════════
@@ -658,11 +774,12 @@ SHARED_RULES = """Rules:
 
 CRITICAL — KEY MARKET DATA (MANDATORY VERIFICATION):
 - If VERIFIED MARKET DATA from Finnhub API is provided above the tweets, you MUST use those numbers for index performance (% change). Do NOT override them with numbers from tweets or from memory.
-- Use the verified % changes as-is. For exact index point levels, gold price, oil price, and VIX level: ALWAYS use Google Search. Do NOT calculate them from ETF prices.
-- You MUST verify via Google Search the current prices of: Brent crude oil, WTI crude oil, gold, and any other commodity you mention.
+- Use the verified % changes as-is. Do NOT write absolute gold/oil commodity prices unless a verified source explicitly provided the exact current level in the source text. Prefer direction only.
+- Avoid exact commodity price levels such as gold $/oz or oil $/barrel. If mentioned, write only direction and context unless the exact level appears in verified source text.
 - If a tweet states a price that seems extreme or unusual, you MUST verify it via Google Search before including it.
 - NEVER trust a single tweet for major price data. Always cross-reference.
 - Directional words are factual claims. Words like "צונח", "יורד", "נחלש", "מזנק", "עולה", "מטפס" MUST match the verified market-data direction block. If verified data says oil is up, do not write oil is falling, even if a tweet's wording suggests pressure.
+- Do NOT use hype verbs such as מזנקת/ריסקה/טסה for a stock unless the exact percentage move appears in the source text. Prefer neutral wording: מרכזת עניין, מגיבה בעלייה, עקפה תחזיות.
 - NEVER write vague descriptions like "the market closed in green territory" or "mixed trading" without exact numbers.
 - NEVER claim an index or stock is at an "all-time high" (שיא / שיא כל הזמנים) unless you verify it via Google Search.
 
@@ -682,7 +799,7 @@ CRITICAL — DATA ACCURACY:
 - EVERY number in the review must come from one of these sources: (1) Finnhub verified data above, (2) a specific tweet, or (3) Google Search verification.
 - NEVER invent, estimate, or recall prices from memory. If you cannot point to a source, do NOT include the number.
 - For the 10-year Treasury yield: verify via Google Search. Do NOT estimate from TLT.
-- For commodity absolute prices (oil $/barrel, gold $/oz): verify via Google Search — do NOT estimate from ETF prices.
+- For commodity absolute prices (oil $/barrel, gold $/oz): avoid exact levels unless directly sourced. Direction is enough.
 - If a number from a tweet contradicts the Finnhub verified data, the Finnhub data is correct — the tweet is wrong.
 - Getting a number wrong destroys credibility. When in doubt, omit.
 
@@ -1576,7 +1693,7 @@ YOUR TASK:
 - Fix any number that contradicts the verified data.
 - Fix any factual error (wrong company attribution, wrong political titles, wrong dates, wrong terminology).
 - For sector ETF percentages (XLE/XLK/XLF/XLY/XLV/XLI): if a specific sector number appears in the review that does NOT match the Finnhub data, REMOVE that claim or replace it with a number from the Finnhub data.
-- For 10-year Treasury yield, commodity absolute prices ($/barrel, $/oz), and DXY level: these are NOT in Finnhub. Only keep them if they are clearly reasonable; otherwise remove.
+- For 10-year Treasury yield, commodity absolute prices ($/barrel, $/oz), and DXY level: these are NOT in Finnhub. If not explicitly verified in source text, remove the exact level.
 - DO NOT change the writing style, structure, section count, or section headings.
 - DO NOT remove content — only fix errors or remove clearly-hallucinated numbers.
 - EXCEPTION: if PROVENANCE WARNINGS above flag a number you cannot verify, remove the entire bullet containing it (see provenance instructions above).
@@ -1592,7 +1709,7 @@ COMMON ERRORS TO CATCH:
 - Self-contradicting phrases like "נותרו יציבות עם עלייה של X%" — resolve to one or the other.
 - Directional wording must match the verified market data. If oil proxies are positive, phrases like "מחירי הנפט צונחים" are factual errors. If oil proxies are negative, phrases like "מחירי הנפט מזנקים" are factual errors.
 
-OUTPUT: Return the corrected review as valid JSON in EXACTLY the same structure (same title, same section headings, same number of sections — for live_news that means exactly 1 section, for others exactly 2). No backticks, no explanations — pure JSON only."""
+OUTPUT: Return the corrected review as valid JSON in EXACTLY the same structure (same title, same section headings, same number of sections). No backticks, no explanations — pure JSON only."""
 
     try:
         r = requests.post(
@@ -1800,6 +1917,10 @@ def main():
     print("\n── Layer 4b: Market direction guard ──")
     result = apply_market_direction_guard(result, REVIEW_TYPE)
 
+    # Layer 4c: Strict language and commodity-price guard — removes unverified hype/absolute commodity levels
+    print("\n── Layer 4c: Strict language and price guard ──")
+    result = apply_strict_language_and_price_guard(result, REVIEW_TYPE)
+
     # Layer 5: Re-enforce structure (defensive — fact-checker sometimes alters section headings)
     print("\n── Layer 5: Final structure enforcement ──")
     result = enforce_structure(result, REVIEW_TYPE, expected_title)
@@ -1807,6 +1928,10 @@ def main():
     # Layer 6: Pre-market tense guard (daily_prep only, only if run before US market open)
     print("\n── Layer 6: Pre-market tense guard ──")
     result = apply_pre_market_tense_guard(result, REVIEW_TYPE)
+
+    # Layer 7: Final safety pass after tense fixes
+    print("\n── Layer 7: Final strict safety guard ──")
+    result = apply_strict_language_and_price_guard(result, REVIEW_TYPE)
     print("── Validation complete ──\n")
 
     # Defensive: strip any internal metadata before persisting
