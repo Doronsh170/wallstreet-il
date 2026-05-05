@@ -17,6 +17,26 @@ ACCOUNTS = ["AIStockSavvy","wallstengine","DeIaone","StockMKTNewz","zerohedge","
 PY_TO_HEB = {0: "שני", 1: "שלישי", 2: "רביעי", 3: "חמישי", 4: "שישי", 5: "שבת", 6: "ראשון"}
 
 # ══════════════════════════════════════════════════════════════
+# ACTIVE GEOPOLITICAL CONTEXT — edit this manually when reality changes.
+# Set to "" (empty string) to disable. The block is injected into every
+# prompt so Gemini stops softening "war" into "tensions".
+# Last edited: 2026-05-05
+# ══════════════════════════════════════════════════════════════
+ACTIVE_GEOPOLITICAL_CONTEXT = """
+ACTIVE GEOPOLITICAL CONTEXT — these facts override any softer framing in tweets:
+- The United States is in an ACTIVE WAR with Iran. The war began on February 28, 2026.
+- The US Navy is running Operation "Project Freedom" in the Strait of Hormuz.
+- Israel and the US are jointly engaged. The Strait of Hormuz is intermittently closed and oil shipments are disrupted.
+- This is NOT "tensions", "escalation", "diplomatic crisis", or "regional concerns" — it is a war with active military operations.
+
+LANGUAGE RULES (MANDATORY when describing this conflict):
+- USE: מלחמה, מבצע צבאי, תקיפה, עימות מזוין, מבצע "Project Freedom".
+- DO NOT USE: מתיחות, הסלמה, חששות, "ניסיונות דיפלומטיים להרגעה" — these systematically understate the reality.
+- If a tweet uses softer wording (e.g. "tensions") but the underlying event is a missile strike or naval engagement, the review must use the accurate Hebrew term, not the softened one.
+- Frame market moves accordingly: "על רקע המלחמה במזרח התיכון", not "על רקע המתיחות".
+"""
+
+# ══════════════════════════════════════════════════════════════
 # EXPECTED STRUCTURE — single source of truth for output format
 # ══════════════════════════════════════════════════════════════
 
@@ -245,121 +265,191 @@ def apply_market_direction_guard(result, review_type):
             item["title"] = fix_text(item["title"])
     return result
 
+# ══════════════════════════════════════════════════════════════
+# PER-TICKER DIRECTION GUARD (NEW — closes the PLTR-style errors)
+# Verifies every $TICKER mentioned in the review against a live Finnhub quote.
+# Catches sign-flip errors (review says "PLTR up" while Finnhub shows down).
+# ══════════════════════════════════════════════════════════════
 
-# Deterministic language/price safety layer.
-# Purpose: avoid embarrassing claims like "PLTR מזנקת" without a verified % move,
-# and avoid stale absolute commodity prices such as gold at $2,380.
-_STRONG_HYPE_WORDS = [
-    "מזנקת", "מזנק", "מזנקים", "זינקה", "זינק", "זינקו", "קופצת", "קופץ", "קופצים",
-    "טסה", "טס", "טסות", "טסים", "ריסקה", "מרסקת", "מפוצצת", "התפוצצה"
+# Hebrew direction tokens used to claim a stock is moving up/down.
+_TICKER_UP_TOKENS = [
+    "עולה", "עולים", "עלתה", "עלה", "עלו", "עלייה", "עליות", "בעלייה",
+    "מטפס", "מטפסת", "מטפסים", "טיפס", "טיפסה", "טיפסו",
+    "מזנק", "מזנקת", "מזנקים", "זינק", "זינקה", "זינקו",
+    "קופץ", "קופצת", "קופצים", "קפץ", "קפצה", "קפצו",
+    "מתחזק", "מתחזקת", "התחזק", "התחזקה",
+    "ירוק", "בירוק", "מוסיפה", "מוסיף", "הוסיפה", "הוסיף",
 ]
-_HYPE_REPLACEMENTS = {
-    "ממשיכה לזנק במסחר המוקדם": "צפויה לרכז עניין במסחר המוקדם",
-    "ממשיכה לזנק": "מרכזת עניין",
-    "מזנקת במסחר המוקדם": "מגיבה במסחר המוקדם",
-    "מזנק במסחר המוקדם": "מגיב במסחר המוקדם",
-    "מזנקים במסחר המוקדם": "מגיבים במסחר המוקדם",
-    "מזנקת": "מרכזת עניין",
-    "מזנק": "מרכז עניין",
-    "מזנקים": "מרכזים עניין",
-    "זינקה": "עלתה",
-    "זינק": "עלה",
-    "זינקו": "עלו",
-    "קופצת": "עולה",
-    "קופץ": "עולה",
-    "קופצים": "עולים",
-    "טסה": "עולה",
-    "טס": "עולה",
-    "טסות": "עולות",
-    "טסים": "עולים",
-    "ריסקה את התחזיות": "עקפה את התחזיות",
-    "מרסקת את התחזיות": "עוקפת את התחזיות",
-    "התפוצצה": "עלתה",
-    "מפוצצת": "חזקה",
+_TICKER_DOWN_TOKENS = [
+    "יורד", "יורדת", "יורדים", "ירד", "ירדה", "ירדו", "ירידה", "ירידות", "בירידה",
+    "נופל", "נופלת", "נופלים", "נפל", "נפלה", "נפלו",
+    "צונח", "צונחת", "צונחים", "צנח", "צנחה", "צנחו", "צניחה",
+    "נחלש", "נחלשת", "נחלשים", "נחלשה",
+    "אדום", "באדום", "מאבד", "מאבדת", "מאבדים", "איבד", "איבדה", "איבדו",
+]
+
+# Tickers excluded from per-ticker verification:
+# - Indices/ETFs already covered by the main direction guard
+# - Generic acronyms that are not real tickers (USD, ET, AM, IPO, etc.)
+_TICKER_EXCLUDE = {
+    "SPY", "QQQ", "DIA", "IWM", "USO", "BNO", "GLD", "SLV", "IBIT", "TLT", "UUP", "VIXY",
+    "XLE", "XLK", "XLF", "XLY", "XLV", "XLI", "XLP", "XLU",
+    "USD", "EUR", "GBP", "JPY", "CHF", "CNY", "INR", "USA", "EU", "UK",
+    "AM", "PM", "ET", "ETF", "ETFS", "IPO", "API", "AI", "ML", "LLM",
+    "EPS", "EBITDA", "PER", "P", "Q", "H", "FY",
+    "VIX", "DXY", "SPX", "NDX", "DJI", "RUT",
+    "NYC", "LA", "SF", "NY", "DC", "TX", "CA",
+    "CEO", "CFO", "CTO", "COO",
+    "FED", "ECB", "BOJ", "BOE", "RBA", "PBOC",
+    "GDP", "CPI", "PPI", "PMI", "ISM", "NFP", "FOMC", "JOLTS",
 }
-_PERCENT_RE = re.compile(r'(?<!\d)(?:\+|-)?\d+(?:\.\d+)?\s*%')
-_COMMODITY_TERMS = ["זהב", "gold", "נפט", "oil", "WTI", "Brent", "ברנט"]
-_COMMODITY_PRICE_RE = re.compile(
-    r'(?:\s*(?:ו)?נסחר(?:ת|ים)?\s*(?:סביב|ברמה של|באזור)?\s*)?'
-    r'(?:סביב\s*|ברמה של\s*|באזור\s*)?'
-    r'\$?\s*\d{1,3}(?:,\d{3})*(?:\.\d+)?\s*דולר\s*(?:לאונקיה|לאונקייה|לחבית)?',
-    re.IGNORECASE
-)
 
 
-def _sentence_has_percent(sentence):
-    return bool(_PERCENT_RE.search(sentence or ""))
+def extract_ticker_mentions(result):
+    """Return set of unique tickers mentioned with $ prefix."""
+    if not isinstance(result, dict):
+        return set()
+    texts = []
+    if isinstance(result.get("title"), str):
+        texts.append(result["title"])
+    for section in result.get("sections", []):
+        c = section.get("content", "")
+        if isinstance(c, list):
+            c = "\n".join(str(x) for x in c)
+        if isinstance(c, str):
+            texts.append(c)
+    for item in result.get("items", []):
+        d = item.get("description", "")
+        if isinstance(d, str):
+            texts.append(d)
+    full_text = "\n".join(texts)
+    tickers = set()
+    for m in re.finditer(r'\$([A-Z]{1,5})\b', full_text):
+        sym = m.group(1)
+        if sym not in _TICKER_EXCLUDE:
+            tickers.add(sym)
+    return tickers
 
 
-def _neutralize_unverified_hype_sentence(sentence):
-    """If a sentence uses strong stock-move language without a verified %, neutralize it."""
-    if not isinstance(sentence, str) or not sentence.strip():
-        return sentence
-    # If the sentence includes a percentage move, leave it alone; the number provenance layer handles numbers.
-    if _sentence_has_percent(sentence):
-        return sentence
-    if not any(w in sentence for w in _STRONG_HYPE_WORDS):
-        return sentence
-    out = sentence
-    for src, dst in sorted(_HYPE_REPLACEMENTS.items(), key=lambda x: -len(x[0])):
-        out = out.replace(src, dst)
+def fetch_ticker_quotes(tickers):
+    """Pull current Finnhub quote for each ticker.
+    Returns dict: ticker -> {'price', 'pct', 'prev_close'}.
+    During pre-market, `c` reflects the latest pre-market trade if any.
+    Returns empty dict if FINNHUB_API_KEY missing or all calls fail."""
+    if not FINNHUB_API_KEY or not tickers:
+        return {}
+    out = {}
+    for t in tickers:
+        try:
+            r = requests.get(
+                f"https://finnhub.io/api/v1/quote?symbol={t}&token={FINNHUB_API_KEY}",
+                timeout=5
+            )
+            if not r.ok:
+                continue
+            d = r.json()
+            price = d.get("c", 0) or 0
+            pct = d.get("dp", 0) or 0
+            prev = d.get("pc", 0) or 0
+            # Skip empty quotes (Finnhub returns zeros for unknown symbols)
+            if price <= 0 or prev <= 0:
+                continue
+            out[t] = {"price": float(price), "pct": float(pct), "prev_close": float(prev)}
+            print(f"  Ticker quote {t}: ${price:.2f} ({pct:+.2f}%)")
+        except Exception as e:
+            print(f"  Ticker quote error for {t}: {e}")
     return out
 
 
-def _remove_unverified_commodity_prices_sentence(sentence):
-    """Remove absolute commodity dollar levels unless they were externally verified.
-    The script has reliable ETF/proxy direction from Finnhub, but not spot gold/oil levels.
-    """
-    if not isinstance(sentence, str) or not sentence.strip():
-        return sentence
-    low = sentence.lower()
-    if not any(term.lower() in low for term in _COMMODITY_TERMS):
-        return sentence
-    out = _COMMODITY_PRICE_RE.sub("", sentence)
-    # Clean awkward leftovers caused by removing the price phrase.
-    out = re.sub(r'\s+ו\s*\.', '.', out)
-    out = re.sub(r'\s{2,}', ' ', out)
-    out = out.replace(' ,', ',').replace(' .', '.')
-    out = re.sub(r'\s*,\s*\.', '.', out)
-    return out.strip()
+def _split_into_bullets(text):
+    """Split content into bullets by line. Empty lines skipped."""
+    if not isinstance(text, str):
+        return []
+    return [line for line in text.split("\n") if line.strip()]
 
 
-def apply_strict_language_and_price_guard(result, review_type):
-    """Final deterministic safety guard.
-    - Avoids unverified hype verbs such as "מזנקת" without a % move.
-    - Removes absolute gold/oil dollar prices, because stale commodity levels are a major error source.
-    """
-    if not isinstance(result, dict):
+def _bullet_contains_ticker(bullet, ticker):
+    return re.search(rf'\${re.escape(ticker)}\b', bullet) is not None
+
+
+def _bullet_claims_direction(bullet):
+    """Return 'up'|'down'|None based on Hebrew direction tokens.
+    Returns None when both up and down tokens appear (ambiguous: 'עלה לאחר שירד')."""
+    has_up = any(re.search(rf'(?<!\w){re.escape(t)}(?!\w)', bullet) for t in _TICKER_UP_TOKENS)
+    has_down = any(re.search(rf'(?<!\w){re.escape(t)}(?!\w)', bullet) for t in _TICKER_DOWN_TOKENS)
+    if has_up and not has_down:
+        return "up"
+    if has_down and not has_up:
+        return "down"
+    return None
+
+
+def apply_ticker_direction_guard(result, ticker_quotes, threshold=0.3):
+    """Per-bullet check: for each $TICKER mention with a directional claim,
+    verify against Finnhub. Threshold is the dead zone (in %) where the daily
+    move is treated as flat (default 0.3%).
+
+    Logs contradictions and stores them in result['_ticker_warnings'] so the
+    fact-checker (Layer 4) can decide whether to remove or correct the bullet."""
+    if not isinstance(result, dict) or not ticker_quotes:
         return result
 
-    def fix_text(text):
-        if not isinstance(text, str):
-            return text
-        out_lines = []
-        for line in text.split('\n'):
-            parts = re.split(r'(?<=[\.\!\?])\s+', line)
-            fixed_parts = []
-            for sent in parts:
-                sent = _neutralize_unverified_hype_sentence(sent)
-                sent = _remove_unverified_commodity_prices_sentence(sent)
-                fixed_parts.append(sent)
-            out_lines.append(' '.join(p for p in fixed_parts if p is not None))
-        return '\n'.join(out_lines)
+    warnings = []
 
-    if isinstance(result.get("title"), str):
-        result["title"] = fix_text(result["title"])
-    for section in result.get("sections", []) or []:
-        content = section.get("content")
-        if isinstance(content, list):
-            section["content"] = [fix_text(str(x)) for x in content]
-        elif isinstance(content, str):
-            section["content"] = fix_text(content)
-    for item in result.get("items", []) or []:
-        if isinstance(item.get("description"), str):
-            item["description"] = fix_text(item["description"])
-        if isinstance(item.get("title"), str):
-            item["title"] = fix_text(item["title"])
+    def scan_bullets(content_text, label):
+        if not isinstance(content_text, str):
+            return
+        for bullet in _split_into_bullets(content_text):
+            for ticker, q in ticker_quotes.items():
+                if not _bullet_contains_ticker(bullet, ticker):
+                    continue
+                claimed = _bullet_claims_direction(bullet)
+                if claimed is None:
+                    continue
+                pct = q["pct"]
+                if abs(pct) < threshold:
+                    actual = "flat"
+                else:
+                    actual = "up" if pct > 0 else "down"
+                if claimed == actual:
+                    continue
+                # Bullet claims movement but Finnhub shows ~0 — likely the
+                # claim references pre-market move not yet visible in /quote.
+                severity = "low" if actual == "flat" else "high"
+                warnings.append({
+                    "ticker": ticker,
+                    "claimed": claimed,
+                    "actual": f"{pct:+.2f}%",
+                    "actual_dir": actual,
+                    "severity": severity,
+                    "bullet": bullet.strip(),
+                    "label": label,
+                })
+
+    for i, section in enumerate(result.get("sections", [])):
+        c = section.get("content", "")
+        if isinstance(c, list):
+            c = "\n".join(str(x) for x in c)
+        scan_bullets(c, f"section[{section.get('heading', i)}]")
+    for i, item in enumerate(result.get("items", [])):
+        d = item.get("description", "")
+        scan_bullets(d, f"event[{i}]")
+
+    high_severity = [w for w in warnings if w["severity"] == "high"]
+    if high_severity:
+        print(f"\n  ⚠️  Ticker direction guard: {len(high_severity)} sign-flip contradictions")
+        for w in high_severity[:10]:
+            print(f"     ${w['ticker']}: bullet claims {w['claimed']}, Finnhub shows {w['actual']}")
+            print(f"       bullet: {w['bullet'][:200]}")
+    elif warnings:
+        print(f"  ⚠️  Ticker direction guard: {len(warnings)} low-severity warnings (likely pre/after-market only)")
+    else:
+        print("  ✅ Ticker direction guard: no contradictions for verified tickers")
+
+    if warnings:
+        result["_ticker_warnings"] = warnings
     return result
+
 
 # ══════════════════════════════════════════════════════════════
 # MARKET DATA — FINNHUB
@@ -763,7 +853,7 @@ The text below was published before today's trading session. Reference it to res
 # PROMPTS
 # ══════════════════════════════════════════════════════════════
 
-SHARED_RULES = """Rules:
+SHARED_RULES = (ACTIVE_GEOPOLITICAL_CONTEXT + "\n" if ACTIVE_GEOPOLITICAL_CONTEXT else "") + """Rules:
 - Write ONLY in Hebrew. Use English only for tickers ($AAPL), index names (S&P 500), and well-known financial terms in parentheses on first use only.
 - Be specific: every claim must include a number, percentage, or ticker. Never write vague statements like "the market had an interesting week".
 - Do NOT repeat the same information across sections. Each section must contain NEW content.
@@ -774,12 +864,11 @@ SHARED_RULES = """Rules:
 
 CRITICAL — KEY MARKET DATA (MANDATORY VERIFICATION):
 - If VERIFIED MARKET DATA from Finnhub API is provided above the tweets, you MUST use those numbers for index performance (% change). Do NOT override them with numbers from tweets or from memory.
-- Use the verified % changes as-is. Do NOT write absolute gold/oil commodity prices unless a verified source explicitly provided the exact current level in the source text. Prefer direction only.
-- Avoid exact commodity price levels such as gold $/oz or oil $/barrel. If mentioned, write only direction and context unless the exact level appears in verified source text.
+- Use the verified % changes as-is. For exact index point levels, gold price, oil price, and VIX level: ALWAYS use Google Search. Do NOT calculate them from ETF prices.
+- You MUST verify via Google Search the current prices of: Brent crude oil, WTI crude oil, gold, and any other commodity you mention.
 - If a tweet states a price that seems extreme or unusual, you MUST verify it via Google Search before including it.
 - NEVER trust a single tweet for major price data. Always cross-reference.
 - Directional words are factual claims. Words like "צונח", "יורד", "נחלש", "מזנק", "עולה", "מטפס" MUST match the verified market-data direction block. If verified data says oil is up, do not write oil is falling, even if a tweet's wording suggests pressure.
-- Do NOT use hype verbs such as מזנקת/ריסקה/טסה for a stock unless the exact percentage move appears in the source text. Prefer neutral wording: מרכזת עניין, מגיבה בעלייה, עקפה תחזיות.
 - NEVER write vague descriptions like "the market closed in green territory" or "mixed trading" without exact numbers.
 - NEVER claim an index or stock is at an "all-time high" (שיא / שיא כל הזמנים) unless you verify it via Google Search.
 
@@ -799,7 +888,7 @@ CRITICAL — DATA ACCURACY:
 - EVERY number in the review must come from one of these sources: (1) Finnhub verified data above, (2) a specific tweet, or (3) Google Search verification.
 - NEVER invent, estimate, or recall prices from memory. If you cannot point to a source, do NOT include the number.
 - For the 10-year Treasury yield: verify via Google Search. Do NOT estimate from TLT.
-- For commodity absolute prices (oil $/barrel, gold $/oz): avoid exact levels unless directly sourced. Direction is enough.
+- For commodity absolute prices (oil $/barrel, gold $/oz): verify via Google Search — do NOT estimate from ETF prices.
 - If a number from a tweet contradicts the Finnhub verified data, the Finnhub data is correct — the tweet is wrong.
 - Getting a number wrong destroys credibility. When in doubt, omit.
 
@@ -1662,10 +1751,12 @@ def number_provenance_check(result, source_bundle, review_type):
 # FACT-CHECKER
 # ══════════════════════════════════════════════════════════════
 
-def fact_check_with_gemini(result, market_data, review_type, provenance_warnings=None):
+def fact_check_with_gemini(result, market_data, review_type, provenance_warnings=None, ticker_warnings=None):
     """Flash-based fact check. Runs AFTER enforce_structure so the structure it sees is already correct.
     If provenance_warnings is provided, the fact-checker is instructed to remove bullets whose
-    numbers cannot be verified against sources."""
+    numbers cannot be verified against sources.
+    If ticker_warnings is provided, the fact-checker is instructed to fix or remove bullets
+    whose directional claim about a ticker contradicts the Finnhub quote."""
     # Strip internal metadata before serializing for the model
     clean_result = {k: v for k, v in result.items() if not k.startswith("_")}
     review_json = json.dumps(clean_result, ensure_ascii=False, indent=2)
@@ -1679,11 +1770,30 @@ def fact_check_with_gemini(result, market_data, review_type, provenance_warnings
         lines.append("\nFor each warning above: either (a) the number is correct and you can verify it via your own knowledge — keep the bullet; or (b) the number is a hallucination — REMOVE the entire bullet containing that number from the content. Do NOT just silently fix the number to something else — if it can't be verified, remove the claim.")
         provenance_block = "\n".join(lines)
 
+    # Build the ticker direction block — these are sign-flip errors caught by Finnhub
+    ticker_block = ""
+    if ticker_warnings:
+        high_sev = [w for w in ticker_warnings if w.get("severity") == "high"]
+        if high_sev:
+            lines = ["\nTICKER DIRECTION CONTRADICTIONS — these bullets claim a price direction that CONTRADICTS the verified Finnhub quote:"]
+            for w in high_sev[:10]:
+                lines.append(
+                    f"- ${w['ticker']}: bullet claims '{w['claimed']}' but Finnhub shows {w['actual']} ({w['actual_dir']})."
+                )
+                lines.append(f"  Offending bullet: {w['bullet'][:300]}")
+            lines.append("")
+            lines.append("FIX RULE for each contradiction above:")
+            lines.append("- If the bullet's claim about the stock direction can be re-stated correctly using the Finnhub %, REWRITE it with the correct direction and percentage. Keep the surrounding context (earnings result, news event, etc.) but flip the directional words and numbers.")
+            lines.append("- If the bullet was written ONLY about the price move (no real news content), REMOVE the entire bullet.")
+            lines.append("- NEVER leave a bullet that says a stock is going up when Finnhub shows it down, or vice versa. This is the most embarrassing kind of error.")
+            ticker_block = "\n".join(lines)
+
     prompt = f"""You are a FACT-CHECKER for a Hebrew financial market review. Your ONLY job is to find and fix factual errors.
 
 VERIFIED MARKET DATA (100% correct, sourced from Finnhub API):
 {market_data if market_data else "(No Finnhub data available for this run)"}
 {provenance_block}
+{ticker_block}
 
 THE REVIEW TO CHECK:
 {review_json}
@@ -1693,12 +1803,20 @@ YOUR TASK:
 - Fix any number that contradicts the verified data.
 - Fix any factual error (wrong company attribution, wrong political titles, wrong dates, wrong terminology).
 - For sector ETF percentages (XLE/XLK/XLF/XLY/XLV/XLI): if a specific sector number appears in the review that does NOT match the Finnhub data, REMOVE that claim or replace it with a number from the Finnhub data.
-- For 10-year Treasury yield, commodity absolute prices ($/barrel, $/oz), and DXY level: these are NOT in Finnhub. If not explicitly verified in source text, remove the exact level.
+- For 10-year Treasury yield, commodity absolute prices ($/barrel, $/oz), and DXY level: these are NOT in Finnhub. Only keep them if they are clearly reasonable; otherwise remove.
 - DO NOT change the writing style, structure, section count, or section headings.
 - DO NOT remove content — only fix errors or remove clearly-hallucinated numbers.
 - EXCEPTION: if PROVENANCE WARNINGS above flag a number you cannot verify, remove the entire bullet containing it (see provenance instructions above).
+- EXCEPTION: if TICKER DIRECTION CONTRADICTIONS above are listed, follow the FIX RULE for each — flipping direction words and percentages to match Finnhub, or removing the bullet entirely.
 - DO NOT change the "title" field or section headings — those are already enforced.
 - If everything is correct, return the review unchanged.
+
+CROSS-LINK RELATED EVENTS:
+- Scan the bullets for events that are causally linked but appear as separate, disconnected items.
+- Common pattern: one bullet says "Investor X sold all of stock Y" and another bullet says "Y made acquisition offer for Z". These are linked — the sale was driven by the acquisition news.
+- Another pattern: one bullet describes a stock falling, another describes the news that caused the fall.
+- When you detect such links, MERGE them into a single bullet that explains the causal connection. Do NOT leave linked events as disconnected facts.
+- Only merge when the link is clear from the content. Do not invent connections.
 
 COMMON ERRORS TO CATCH:
 - Donald Trump is the CURRENT US President (since Jan 2025). NOT a former president.
@@ -1708,8 +1826,9 @@ COMMON ERRORS TO CATCH:
 - Contradictions: if one bullet says the market rose sharply, another bullet must not describe mixed or weak trading without explaining the distinction.
 - Self-contradicting phrases like "נותרו יציבות עם עלייה של X%" — resolve to one or the other.
 - Directional wording must match the verified market data. If oil proxies are positive, phrases like "מחירי הנפט צונחים" are factual errors. If oil proxies are negative, phrases like "מחירי הנפט מזנקים" are factual errors.
+- Geopolitical softening: if the review describes the US-Iran war as "tensions" or "escalation" or "diplomatic crisis", REWRITE using accurate terms (מלחמה, מבצע צבאי, תקיפה).
 
-OUTPUT: Return the corrected review as valid JSON in EXACTLY the same structure (same title, same section headings, same number of sections). No backticks, no explanations — pure JSON only."""
+OUTPUT: Return the corrected review as valid JSON in EXACTLY the same structure (same title, same section headings, same number of sections — for live_news that means exactly 1 section, for others exactly 2). No backticks, no explanations — pure JSON only."""
 
     try:
         r = requests.post(
@@ -1909,17 +2028,28 @@ def main():
     result = number_provenance_check(result, source_bundle, REVIEW_TYPE)
     provenance_warnings = result.pop("_provenance_warnings", None)
 
-    # Layer 4: Gemini Flash fact-checker — uses provenance warnings to drop unverifiable bullets
+    # Layer 3b: Per-ticker direction guard — pulls live Finnhub quotes for every
+    # $TICKER mentioned in the review and flags sign-flip contradictions.
+    # This is the fix for the PLTR-style "stock up 2.6%" when actually down -2.6%.
+    print("\n── Layer 3b: Per-ticker direction guard ──")
+    mentioned_tickers = extract_ticker_mentions(result)
+    if mentioned_tickers:
+        print(f"  Tickers mentioned in review: {sorted(mentioned_tickers)}")
+        ticker_quotes = fetch_ticker_quotes(mentioned_tickers)
+        result = apply_ticker_direction_guard(result, ticker_quotes)
+    else:
+        print("  No tickers mentioned (or all excluded) — skipping per-ticker check")
+    ticker_warnings = result.pop("_ticker_warnings", None)
+
+    # Layer 4: Gemini Flash fact-checker — uses provenance + ticker warnings to fix or drop bullets
     print("\n── Layer 4: Gemini fact-checker ──")
-    result = fact_check_with_gemini(result, market_data, REVIEW_TYPE, provenance_warnings=provenance_warnings)
+    result = fact_check_with_gemini(result, market_data, REVIEW_TYPE,
+                                     provenance_warnings=provenance_warnings,
+                                     ticker_warnings=ticker_warnings)
 
     # Layer 4b: Deterministic market-direction guard — fixes words like צונח/מזנק if they contradict Finnhub data
     print("\n── Layer 4b: Market direction guard ──")
     result = apply_market_direction_guard(result, REVIEW_TYPE)
-
-    # Layer 4c: Strict language and commodity-price guard — removes unverified hype/absolute commodity levels
-    print("\n── Layer 4c: Strict language and price guard ──")
-    result = apply_strict_language_and_price_guard(result, REVIEW_TYPE)
 
     # Layer 5: Re-enforce structure (defensive — fact-checker sometimes alters section headings)
     print("\n── Layer 5: Final structure enforcement ──")
@@ -1928,10 +2058,6 @@ def main():
     # Layer 6: Pre-market tense guard (daily_prep only, only if run before US market open)
     print("\n── Layer 6: Pre-market tense guard ──")
     result = apply_pre_market_tense_guard(result, REVIEW_TYPE)
-
-    # Layer 7: Final safety pass after tense fixes
-    print("\n── Layer 7: Final strict safety guard ──")
-    result = apply_strict_language_and_price_guard(result, REVIEW_TYPE)
     print("── Validation complete ──\n")
 
     # Defensive: strip any internal metadata before persisting
