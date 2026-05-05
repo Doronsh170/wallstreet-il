@@ -977,7 +977,8 @@ CRITICAL — OUTPUT FORMAT (MANDATORY, NOT NEGOTIABLE):
 """
 
 def get_prompt(tweets, review_type, date_str, day_name, title_date_str=None, title_day_name=None,
-               week_range=None, is_trading=True, market_data="", prior_context="", expected_title=""):
+               week_range=None, is_trading=True, market_data="", prior_context="", expected_title="",
+               editorial_block=""):
     if not title_date_str:
         title_date_str = date_str
     if not title_day_name:
@@ -991,6 +992,9 @@ def get_prompt(tweets, review_type, date_str, day_name, title_date_str=None, tit
         tweets_block = market_data + "\n" + tweets_block
     if prior_context:
         tweets_block = prior_context + "\n" + tweets_block
+    # Editorial pre-flight goes ABOVE everything else — it sets the agenda.
+    if editorial_block:
+        tweets_block = editorial_block + "\n" + tweets_block
 
     from datetime import datetime as dt_class
     time_block = get_time_conversion_block(dt_class.now(ISR_TZ))
@@ -1748,6 +1752,156 @@ def number_provenance_check(result, source_bundle, review_type):
 
 
 # ══════════════════════════════════════════════════════════════
+# EDITORIAL PRE-FLIGHT (NEW — closes the "missing big story" gap)
+# Runs BEFORE the main review prompt. Asks Gemini Flash to identify the top
+# 5-7 stories from the tweet pool, with the cannot-miss aspect of each.
+# The result is injected into the main prompt as a MUST-INCLUDE checklist.
+#
+# This is the fix for: GME-eBay $56B deal missing from the review, HSBC's UK
+# fraud being more important than the Middle East provisions, PLTR after-hours
+# being volatile and ending negative not just "the jump".
+# ══════════════════════════════════════════════════════════════
+
+def editorial_preflight(tweets, review_type):
+    """Identify top 5-7 stories from the tweet pool with cannot-miss aspects.
+    Returns formatted text block to inject into the main prompt, or "" on failure.
+
+    Skipped for review_types where it doesn't help (events calendar, live_news
+    which is already a 2-hour window).
+    """
+    if review_type in ("events", "live_news"):
+        return ""
+    if not tweets or not tweets.strip():
+        return ""
+
+    prompt = f"""You are an editorial pre-flight assistant for a Hebrew financial market review.
+
+Below is a pool of tweets from financial news accounts on X (Twitter). Your job is to identify the top 5-7 most important market-moving stories — NOT to write a review, just to identify the stories that the main review writer must not miss.
+
+CRITERIA — what makes a story "top tier":
+- Concrete events with named companies or tickers (M&A, earnings, regulatory action, geopolitics, macro data).
+- Events with hard numbers (dollar amounts, percentages, share counts).
+- Stories that link multiple tweets — if 3+ tweets reference the same event, it's important.
+- Major macro releases or central bank actions.
+- Sign-flip or counter-narrative stories: a stock that beat earnings BUT fell, a bank that grew BUT missed estimates, a CEO who sold positions.
+
+DO NOT include:
+- Pure analyst commentary without a concrete trigger.
+- Speculation, rumors, generic market color.
+- Stories already covered exhaustively in earlier reviews — focus on what's NEW.
+
+OUTPUT FORMAT — pure JSON, no backticks, no preamble:
+{{
+  "stories": [
+    {{
+      "rank": 1,
+      "headline": "Brief one-line description of the story (English ok, will be translated)",
+      "tickers": ["GME", "EBAY"],
+      "cannot_miss": "The single most important fact or angle that the review must include when covering this story. Example: 'Burry sold his entire GME stake AS A DIRECT RESPONSE to this acquisition offer — the two are linked, not separate stories.'"
+    }}
+  ]
+}}
+
+Include 5-7 stories. Rank #1 = most important. Each "cannot_miss" must be a SPECIFIC fact or angle, not a generic instruction.
+
+TWEETS:
+{tweets[:15000]}
+
+Return ONLY the JSON object."""
+
+    try:
+        r = requests.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}",
+            headers={"Content-Type": "application/json"},
+            json={
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"temperature": 0.2, "maxOutputTokens": 2048}
+            },
+            timeout=60
+        )
+        if not r.ok:
+            print(f"  Pre-flight Gemini status {r.status_code}, skipping")
+            return ""
+
+        resp_data = r.json()
+        candidate = resp_data.get("candidates", [{}])[0]
+        parts = candidate.get("content", {}).get("parts", [])
+        text = ""
+        for part in parts:
+            if "text" in part:
+                text = part["text"]
+
+        if not text:
+            print("  Pre-flight returned no text, skipping")
+            return ""
+
+        text = text.strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+        if text.endswith("```"):
+            text = text[:-3]
+        text = text.strip()
+
+        # Extract the first complete JSON object
+        start = text.find('{')
+        if start >= 0:
+            depth = 0
+            end = start
+            for i in range(start, len(text)):
+                if text[i] == '{':
+                    depth += 1
+                elif text[i] == '}':
+                    depth -= 1
+                    if depth == 0:
+                        end = i + 1
+                        break
+            text = text[start:end]
+
+        parsed = json.loads(text)
+        stories = parsed.get("stories", [])
+
+        if not stories or not isinstance(stories, list):
+            print("  Pre-flight returned no usable stories, skipping")
+            return ""
+
+        # Trim to 7 max, build the prompt block
+        stories = stories[:7]
+        lines = [
+            "",
+            "══ EDITORIAL PRE-FLIGHT — TOP STORIES IDENTIFIED FROM TWEET POOL ══",
+            "These are the most important stories in today's tweets. The review MUST cover stories #1-#3 at minimum.",
+            "When covering ANY of these stories, the review MUST include the 'cannot_miss' angle — that is the editorial line that prevents the embarrassing 'half-truth' coverage.",
+            "Do NOT just mention the story by name. Include the specific number, link, or angle marked as cannot_miss.",
+            ""
+        ]
+        for s in stories:
+            rank = s.get("rank", "?")
+            headline = s.get("headline", "")
+            tickers = s.get("tickers", []) or []
+            cannot_miss = s.get("cannot_miss", "")
+            tickers_str = ", ".join(f"${t}" for t in tickers if t) if tickers else "(no tickers)"
+            lines.append(f"#{rank}: {headline}")
+            lines.append(f"  Tickers: {tickers_str}")
+            lines.append(f"  CANNOT-MISS ANGLE: {cannot_miss}")
+            lines.append("")
+        lines.append("══════════════════════════════════════════════════════════════════════════════════════════")
+        lines.append("")
+
+        block = "\n".join(lines)
+        print(f"  ✅ Pre-flight identified {len(stories)} top stories")
+        for s in stories[:3]:
+            print(f"     #{s.get('rank', '?')}: {s.get('headline', '')[:80]}")
+        return block
+
+    except json.JSONDecodeError as e:
+        print(f"  Pre-flight JSON parse error: {e}, skipping")
+        return ""
+    except Exception as e:
+        print(f"  Pre-flight failed: {e}, skipping")
+        return ""
+
+
+# ══════════════════════════════════════════════════════════════
 # FACT-CHECKER
 # ══════════════════════════════════════════════════════════════
 
@@ -1996,6 +2150,17 @@ def main():
     if prior_context:
         print(f"  Injected prior-review context ({len(prior_context)} chars)")
 
+    # Editorial pre-flight: identify top stories from the tweet pool BEFORE writing.
+    # This block becomes a MUST-INCLUDE checklist in the main prompt, preventing
+    # major stories (e.g. M&A deals) from being missed and preventing half-truth
+    # framing of stories where there's a counter-narrative angle.
+    print("\n── Editorial pre-flight ──")
+    editorial_block = editorial_preflight(tweets, REVIEW_TYPE)
+    if editorial_block:
+        print(f"  Editorial block: {len(editorial_block)} chars injected into main prompt")
+    else:
+        print(f"  No editorial block (review_type={REVIEW_TYPE} or pre-flight skipped)")
+
     prompt = get_prompt(
         tweets, REVIEW_TYPE, date_str, day_name,
         title_date_str=title_date_str,
@@ -2005,6 +2170,7 @@ def main():
         market_data=market_data,
         prior_context=prior_context,
         expected_title=expected_title,
+        editorial_block=editorial_block,
     )
     if not prompt:
         print(f"Unknown review type: {REVIEW_TYPE}")
