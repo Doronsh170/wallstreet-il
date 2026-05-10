@@ -2103,6 +2103,29 @@ def main():
 
     print(f"  Title date: {title_date_str} ({title_day_name}), week_range: {week_range}")
 
+    # Compute the canonical "review date" that will be forced onto result["date"].
+    # Gemini hallucinates dates (e.g. weekly_summary date showing 5/9/2026 in the future).
+    # We override deterministically based on the review type.
+    if REVIEW_TYPE in ("daily_prep", "daily_summary"):
+        review_date = title_date_str  # the trading day this review is about
+    elif REVIEW_TYPE == "weekly_prep":
+        # Monday of the upcoming/current trading week
+        weekday = now.weekday()
+        if weekday <= 4:
+            wp_monday = now - timedelta(days=weekday)
+        else:
+            wp_monday = now + timedelta(days=(7 - weekday))
+        review_date = wp_monday.strftime("%Y-%m-%d")
+    elif REVIEW_TYPE == "weekly_summary":
+        # Friday of the trading week that just ended
+        weekday = now.weekday()  # Mon=0 ... Sun=6
+        days_since_friday = (weekday - 4) % 7
+        last_friday = now - timedelta(days=days_since_friday)
+        review_date = last_friday.strftime("%Y-%m-%d")
+    else:  # live_news
+        review_date = date_str
+    print(f"  Review date (will be forced onto output): {review_date}")
+
     # Build the exact title we will force onto the output
     now_time_str = now.strftime('%H:%M')
     expected_title = build_expected_title(REVIEW_TYPE, title_day_name, title_date_str, week_range, now_time_str)
@@ -2252,6 +2275,12 @@ def main():
         else:
             print(f"  Warning: no 'items' key. Keys: {list(result.keys())}")
     elif REVIEW_TYPE in key_map:
+        # Force the canonical date — Gemini sometimes writes nonsense dates
+        # (e.g. weekly_summary returning 2026-09-05 when the week ended 2026-05-08).
+        original_date = result.get("date", "")
+        if original_date != review_date:
+            print(f"  ✅ Date overridden: '{original_date}' → '{review_date}'")
+        result["date"] = review_date
         data[key_map[REVIEW_TYPE]] = result
 
     with open("data.json", "w", encoding="utf-8") as f:
