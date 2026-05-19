@@ -1,4 +1,4 @@
-import json, os, re, requests
+import json, os, re, requests, sys
 from datetime import datetime, timezone, timedelta
 try:
     from zoneinfo import ZoneInfo
@@ -896,6 +896,15 @@ CRITICAL — CONSISTENCY:
 - Every bullet must be internally consistent with the verified market data above.
 - Do NOT add a separate "שורה תחתונה" section, closing paragraph, or summary section.
 
+CRITICAL — CAUSAL MARKET LOGIC / NARRATIVE CONSISTENCY:
+- Do NOT write a causal explanation unless the causal chain is clear and market-consistent.
+- Forbidden contradiction: "עלייה בתיאבון לסיכון" together with "מעבר לאפיקים בטוחים".
+- Forbidden contradiction: "risk-on" together with "flight to safety" unless explicitly framed as a rare divergence and verified.
+- Forbidden contradiction: crypto falling BECAUSE risk appetite increased. If unsure, write "במקביל ל" or "בתוך סביבת מסחר תנודתית" instead of "על רקע", "בשל", "כתוצאה מכך" or "משקף".
+- Forbidden contradiction: Treasury yields rising because investors fled into Treasuries. Bond demand normally pushes yields lower.
+- Forbidden contradiction: oil falling because supply disruption fears increased, unless a stronger offsetting factor is explicitly verified.
+- When the causal link is uncertain, keep the verified fact and remove the explanation.
+
 CRITICAL — FINANCIAL TERMINOLOGY:
 - Use precise Hebrew financial terms. IPO (הנפקה ראשונית לציבור) is NOT the same as ETF (תעודת סל).
 - A private company planning an IPO is issuing shares — it does NOT have an ETF.
@@ -1751,6 +1760,298 @@ def number_provenance_check(result, source_bundle, review_type):
     return result
 
 
+
+# ══════════════════════════════════════════════════════════════
+# NARRATIVE CONSISTENCY GUARD — causal logic / market-regime sanity check
+# ══════════════════════════════════════════════════════════════
+
+_CAUSAL_CONNECTORS = [
+    "על רקע", "בשל", "עקב", "בעקבות", "כתוצאה מכך", "כתוצאה מ", "הוביל ל", "הובילה ל",
+    "משקף", "משקפת", "מבטא", "מבטאת", "נבע", "נבעה", "נובעת", "נובע"
+]
+
+_RISK_ON_TERMS = [
+    "עלייה בתיאבון לסיכון", "עליה בתיאבון לסיכון", "תיאבון לסיכון גובר", "תיאבון סיכון גובר",
+    "תיאבון לסיכון", "risk-on", "Risk-on", "ריסק און", "סנטימנט חיובי", "הקלה בשווקים"
+]
+
+_RISK_OFF_TERMS = [
+    "ירידה בתיאבון לסיכון", "תיאבון סיכון נמוך", "risk-off", "Risk-off", "ריסק אוף",
+    "בריחה מסיכון", "שנאת סיכון", "סנטימנט שלילי"
+]
+
+_SAFE_HAVEN_TERMS = [
+    "אפיקים בטוחים", "נכסים בטוחים", "נכסי מקלט", "מקלט בטוח", "flight to safety",
+    "דולר", "זהב", "אג\"ח ממשלתיות", "אגרות חוב ממשלתיות", "סקטורים דפנסיביים"
+]
+
+_RISK_ASSET_TERMS = [
+    "ביטקוין", "קריפטו", "BTC", "$BTC", "מניות צמיחה", "טכנולוגיה", "נכסי סיכון",
+    "מניות ספקולטיביות", "high beta", "היי בטא"
+]
+
+_YIELD_TERMS = ["תשואה", "תשואות", "Treasury yield", "yields", "אג\"ח ל-10", "אגח ל-10"]
+_BOND_DEMAND_TERMS = ["בריחה לאג\"ח", "מעבר לאג\"ח", "ביקוש לאג\"ח", "רכישת אג\"ח", "קניית אג\"ח", "fled into Treasuries", "flight to Treasuries"]
+_OIL_TERMS = ["נפט", "ברנט", "WTI", "Brent", "crude oil"]
+_SUPPLY_DISRUPTION_TERMS = ["שיבושי אספקה", "הפרעה לאספקה", "סיכון לאספקה", "supply disruption", "מצרי הורמוז", "Hormuz"]
+_GEOPOLITICAL_RELIEF_TERMS = ["הקלה גיאופוליטית", "הרגעה גיאופוליטית", "דחיית תקיפה", "ceasefire", "הפסקת אש", "de-escalation"]
+
+
+def _has_any_ci(text, terms):
+    """Case-insensitive containment for Hebrew/English phrase lists."""
+    if not isinstance(text, str):
+        return False
+    low = text.lower()
+    return any(t.lower() in low for t in terms)
+
+
+def _has_causal_connector(text):
+    return _has_any_ci(text, _CAUSAL_CONNECTORS)
+
+
+def _strip_or_soften_causality(sentence):
+    """Remove the causal tail from a market sentence when the causal chain is contradictory.
+
+    We keep the factual part, and replace the explanation with a neutral, professional phrase.
+    This prevents embarrassing claims such as: 'BTC fell because risk appetite increased'.
+    """
+    if not isinstance(sentence, str) or not sentence.strip():
+        return sentence
+
+    # If the sentence itself is only an explanation using 'משקף/מבטא', replace it entirely.
+    if re.search(r'(משקף|משקפת|מבטא|מבטאת)\s+את', sentence):
+        return "בשלב זה לא ניתן לייחס את התנועה לגורם יחיד."
+
+    # Cut the sentence at the first causal connector and keep the factual opening.
+    pattern = r'\s+(על רקע|בשל|עקב|בעקבות|כתוצאה מכך|כתוצאה מ|נבע(?:ה)? מ|נובע מ|נובעת מ|הוביל(?:ה)? ל)\s+'
+    m = re.search(pattern, sentence)
+    if m:
+        factual = sentence[:m.start()].strip().rstrip(".،,;:")
+        if factual:
+            return factual + " בתוך סביבת מסחר תנודתית."
+
+    # Fallback: soften explicit causal verbs without deleting the whole sentence.
+    replacements = {
+        "על רקע": "במקביל ל",
+        "בשל": "במקביל ל",
+        "עקב": "במקביל ל",
+        "בעקבות": "לאחר",
+        "כתוצאה מכך": "לצד זאת",
+        "הוביל ל": "לווה ב",
+        "הובילה ל": "לוותה ב",
+        "נבעה": "נרשמה במקביל",
+        "נבע": "נרשם במקביל",
+        "נובעת": "נרשמת במקביל",
+        "נובע": "נרשם במקביל",
+    }
+    out = sentence
+    for src, dst in replacements.items():
+        out = out.replace(src, dst)
+    return out
+
+
+def _split_sentences_keep_lines(text):
+    """Split text by line and sentence boundaries while preserving bullet lines."""
+    lines = text.split("\n")
+    for line in lines:
+        if not line.strip():
+            yield line, []
+            continue
+        parts = re.split(r'(?<=[\.\!\?])\s+', line)
+        yield line, parts
+
+
+def apply_narrative_consistency_guard(result, review_type):
+    """Detect and neutralize market-logic contradictions in causal explanations.
+
+    This guard is intentionally conservative: it does NOT try to be a macro strategist.
+    It only catches common embarrassing contradictions:
+    - risk-on + flight-to-safety in the same causal claim
+    - crypto/risk assets falling because risk appetite increased
+    - yields rising because investors fled into Treasuries
+    - oil falling because supply disruption fears increased
+    - geopolitical relief together with a surge in safe-haven demand
+
+    Returns (result, warnings). Warnings with severity='high' should block publication
+    if they remain after the fact-checking layers.
+    """
+    warnings = []
+
+    if not isinstance(result, dict):
+        return result, warnings
+
+    def check_sentence(sentence, label):
+        original = sentence
+        if not isinstance(sentence, str) or not sentence.strip():
+            return sentence
+
+        has_up = _contains_any(sentence, _UP_WORDS)
+        has_down = _contains_any(sentence, _DOWN_WORDS)
+        has_causal = _has_causal_connector(sentence)
+
+        rules = []
+
+        # 1) Risk-on + flight-to-safety contradiction.
+        if _has_any_ci(sentence, _RISK_ON_TERMS) and _has_any_ci(sentence, _SAFE_HAVEN_TERMS):
+            rules.append("risk_on_vs_safe_haven")
+
+        # 2) Risk asset down because risk appetite increased.
+        if has_causal and _has_any_ci(sentence, _RISK_ASSET_TERMS) and _has_any_ci(sentence, _RISK_ON_TERMS) and has_down:
+            rules.append("risk_asset_down_due_to_risk_on")
+
+        # 3) Risk asset up because risk appetite fell / risk-off, unless explicitly framed as defensive crypto flow.
+        if has_causal and _has_any_ci(sentence, _RISK_ASSET_TERMS) and _has_any_ci(sentence, _RISK_OFF_TERMS) and has_up:
+            rules.append("risk_asset_up_due_to_risk_off")
+
+        # 4) Yields rising because investors buy/flee into bonds.
+        if has_causal and _has_any_ci(sentence, _YIELD_TERMS) and has_up and _has_any_ci(sentence, _BOND_DEMAND_TERMS):
+            rules.append("yields_up_due_to_bond_demand")
+
+        # 5) Oil down because supply disruption fears increased.
+        if has_causal and _has_any_ci(sentence, _OIL_TERMS) and has_down and _has_any_ci(sentence, _SUPPLY_DISRUPTION_TERMS):
+            rules.append("oil_down_due_to_supply_disruption")
+
+        # 6) Geopolitical relief + safe-haven demand surge.
+        if _has_any_ci(sentence, _GEOPOLITICAL_RELIEF_TERMS) and _has_any_ci(sentence, _SAFE_HAVEN_TERMS) and has_up:
+            rules.append("relief_vs_safe_haven_demand")
+
+        if not rules:
+            return sentence
+
+        fixed = _strip_or_soften_causality(sentence)
+        warnings.append({
+            "label": label,
+            "severity": "high" if fixed == original else "medium",
+            "rules": rules,
+            "original": original.strip(),
+            "fixed": fixed.strip(),
+        })
+        if fixed != original:
+            print(f"  ✅ Narrative guard neutralized causal contradiction ({', '.join(rules)})")
+            print(f"     before: {original.strip()[:220]}")
+            print(f"     after : {fixed.strip()[:220]}")
+        else:
+            print(f"  ⚠️  Narrative guard detected unresolved contradiction ({', '.join(rules)})")
+            print(f"     sentence: {original.strip()[:220]}")
+        return fixed
+
+    def fix_text(text, label):
+        if not isinstance(text, str):
+            return text
+        new_lines = []
+        for line, parts in _split_sentences_keep_lines(text):
+            if not parts:
+                new_lines.append(line)
+                continue
+
+            # Cross-sentence contradiction inside the same bullet/line:
+            # Example: sentence 1 says BTC fell because risk appetite increased;
+            # sentence 2 says the fall reflects flight to safety. Sentence-level
+            # scanning may miss the second sentence, so the whole line context matters.
+            line_has_down = _contains_any(line, _DOWN_WORDS)
+            line_has_up = _contains_any(line, _UP_WORDS)
+            cross_sentence_conflict = (
+                (_has_any_ci(line, _RISK_ON_TERMS) and _has_any_ci(line, _SAFE_HAVEN_TERMS))
+                or (_has_any_ci(line, _RISK_ASSET_TERMS) and _has_any_ci(line, _RISK_ON_TERMS) and line_has_down)
+                or (_has_any_ci(line, _YIELD_TERMS) and line_has_up and _has_any_ci(line, _BOND_DEMAND_TERMS))
+                or (_has_any_ci(line, _OIL_TERMS) and line_has_down and _has_any_ci(line, _SUPPLY_DISRUPTION_TERMS))
+            )
+
+            fixed_parts = []
+            for part in parts:
+                fixed = check_sentence(part, label)
+                if cross_sentence_conflict and fixed == part and (_has_causal_connector(part) or re.search(r'(משקף|משקפת|מבטא|מבטאת)\s+את', part)):
+                    fixed2 = _strip_or_soften_causality(part)
+                    warnings.append({
+                        "label": label,
+                        "severity": "medium" if fixed2 != part else "high",
+                        "rules": ["cross_sentence_market_regime_contradiction"],
+                        "original": part.strip(),
+                        "fixed": fixed2.strip(),
+                    })
+                    fixed = fixed2
+                    print("  ✅ Narrative guard neutralized cross-sentence causal contradiction")
+                    print(f"     before: {part.strip()[:220]}")
+                    print(f"     after : {fixed.strip()[:220]}")
+                fixed_parts.append(fixed)
+            new_lines.append(" ".join(fixed_parts))
+        return "\n".join(new_lines)
+
+    for i, section in enumerate(result.get("sections", [])):
+        heading = section.get("heading", f"section_{i}")
+        content = section.get("content")
+        label = f"section[{heading}]"
+        if isinstance(content, str):
+            section["content"] = fix_text(content, label)
+        elif isinstance(content, list):
+            section["content"] = [fix_text(x, label) if isinstance(x, str) else x for x in content]
+
+    for i, item in enumerate(result.get("items", [])):
+        if isinstance(item.get("description"), str):
+            item["description"] = fix_text(item["description"], f"event[{i}]")
+        if isinstance(item.get("title"), str):
+            item["title"] = fix_text(item["title"], f"event_title[{i}]")
+
+    if warnings:
+        result["_narrative_warnings"] = warnings
+        high = [w for w in warnings if w.get("severity") == "high"]
+        print(f"\n  ⚠️  Narrative consistency: {len(warnings)} warning(s), {len(high)} unresolved/high")
+    else:
+        print("  ✅ Narrative consistency: no causal contradictions detected")
+
+    return result, warnings
+
+
+def save_failed_review(result, blocking_errors, review_type):
+    """Persist a draft for manual review when publication is blocked.
+
+    The GitHub Action should not commit data.json when sys.exit(2) is raised, but this file
+    is useful in local runs and logs. It intentionally does not mutate data.json.
+    """
+    try:
+        payload = {
+            "review_type": review_type,
+            "blocked_at": datetime.now(ISR_TZ).isoformat(),
+            "blocking_errors": blocking_errors,
+            "draft": result,
+        }
+        filename = f"failed_review_{review_type}.json"
+        with open(filename, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        print(f"  Draft saved for manual review: {filename}")
+    except Exception as e:
+        print(f"  Could not save failed-review draft: {e}")
+
+
+def should_block_publication(validation_warnings=None, provenance_warnings=None, ticker_warnings=None, narrative_warnings=None):
+    """Return a list of blocking errors.
+
+    Conservative default:
+    - High-severity ticker sign flips block publication.
+    - Unresolved/high narrative contradictions block publication.
+    - Number-provenance warnings do NOT automatically block here because the Gemini
+      fact-checker is already instructed to remove/fix them. They remain logged.
+    """
+    blocking = []
+
+    high_ticker = [w for w in (ticker_warnings or []) if w.get("severity") == "high"]
+    if high_ticker:
+        blocking.append({
+            "type": "ticker_direction_contradiction",
+            "count": len(high_ticker),
+            "examples": high_ticker[:5],
+        })
+
+    high_narrative = [w for w in (narrative_warnings or []) if w.get("severity") == "high"]
+    if high_narrative:
+        blocking.append({
+            "type": "unresolved_narrative_contradiction",
+            "count": len(high_narrative),
+            "examples": high_narrative[:5],
+        })
+
+    return blocking
+
 # ══════════════════════════════════════════════════════════════
 # EDITORIAL PRE-FLIGHT (NEW — closes the "missing big story" gap)
 # Runs BEFORE the main review prompt. Asks Gemini Flash to identify the top
@@ -1982,7 +2283,7 @@ COMMON ERRORS TO CATCH:
 - Directional wording must match the verified market data. If oil proxies are positive, phrases like "מחירי הנפט צונחים" are factual errors. If oil proxies are negative, phrases like "מחירי הנפט מזנקים" are factual errors.
 - Geopolitical softening: if the review describes the US-Iran war as "tensions" or "escalation" or "diplomatic crisis", REWRITE using accurate terms (מלחמה, מבצע צבאי, תקיפה).
 
-OUTPUT: Return the corrected review as valid JSON in EXACTLY the same structure (same title, same section headings, same number of sections — for live_news that means exactly 1 section, for others exactly 2). No backticks, no explanations — pure JSON only."""
+OUTPUT: Return the corrected review as valid JSON in EXACTLY the same structure (same title, same section headings, same number of sections — usually exactly 1 section under the current output-format rules). No backticks, no explanations — pure JSON only."""
 
     try:
         r = requests.post(
@@ -2239,6 +2540,28 @@ def main():
     # Layer 4b: Deterministic market-direction guard — fixes words like צונח/מזנק if they contradict Finnhub data
     print("\n── Layer 4b: Market direction guard ──")
     result = apply_market_direction_guard(result, REVIEW_TYPE)
+
+    # Layer 4c: Narrative consistency guard — catches causal contradictions such as
+    # "BTC fell because risk appetite increased" or "yields rose because investors fled into bonds".
+    print("\n── Layer 4c: Narrative consistency guard ──")
+    result, narrative_warnings = apply_narrative_consistency_guard(result, REVIEW_TYPE)
+    narrative_warnings = result.pop("_narrative_warnings", narrative_warnings or None)
+
+    # Layer 4d: Publication gate — if a contradiction is too severe, do not mutate data.json.
+    print("\n── Layer 4d: Publication gate ──")
+    blocking_errors = should_block_publication(
+        validation_warnings=validation_warnings,
+        provenance_warnings=provenance_warnings,
+        ticker_warnings=ticker_warnings,
+        narrative_warnings=narrative_warnings,
+    )
+    if blocking_errors:
+        print("❌ Publication blocked. Manual review required.")
+        for err in blocking_errors:
+            print(f"  - {err.get('type')}: {err.get('count')}")
+        save_failed_review(result, blocking_errors, REVIEW_TYPE)
+        sys.exit(2)
+    print("  ✅ Publication gate passed")
 
     # Layer 5: Re-enforce structure (defensive — fact-checker sometimes alters section headings)
     print("\n── Layer 5: Final structure enforcement ──")
