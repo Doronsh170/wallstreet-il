@@ -2026,21 +2026,21 @@ def save_failed_review(result, blocking_errors, review_type):
 def should_block_publication(validation_warnings=None, provenance_warnings=None, ticker_warnings=None, narrative_warnings=None):
     """Return a list of blocking errors.
 
-    Conservative default:
-    - High-severity ticker sign flips block publication.
-    - Unresolved/high narrative contradictions block publication.
-    - Number-provenance warnings do NOT automatically block here because the Gemini
-      fact-checker is already instructed to remove/fix them. They remain logged.
+    Balanced default for automated publishing:
+    - Narrative contradictions block publication. This is the embarrassing logic error class
+      the guard was added to catch, for example risk-on + flight-to-safety in the same causal sentence.
+    - Ticker sign-flip warnings are logged and passed to the Gemini fact-checker, but they do NOT
+      block publication by themselves. In pre-market/daily-prep reviews Finnhub quotes can reflect
+      regular-session or stale data, while the bullet may discuss futures, after-hours, guidance,
+      expectations, or a non-price narrative. Blocking on a single ticker warning creates false failures.
+    - Number-provenance warnings do NOT automatically block here because the Gemini fact-checker
+      is already instructed to remove/fix them. They remain logged.
     """
     blocking = []
 
     high_ticker = [w for w in (ticker_warnings or []) if w.get("severity") == "high"]
     if high_ticker:
-        blocking.append({
-            "type": "ticker_direction_contradiction",
-            "count": len(high_ticker),
-            "examples": high_ticker[:5],
-        })
+        print(f"  ⚠️  Publication gate noted ticker warnings but will not block on them: {len(high_ticker)}")
 
     high_narrative = [w for w in (narrative_warnings or []) if w.get("severity") == "high"]
     if high_narrative:
