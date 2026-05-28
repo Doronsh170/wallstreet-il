@@ -81,6 +81,14 @@ jobs:
           REVIEW_TYPE: ${{ steps.type.outputs.type }}
         run: python scripts/update_data.py
 
+      - name: Upload blocked review draft
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blocked-review-${{ steps.type.outputs.type }}
+          path: failed_review_*.json
+          if-no-files-found: ignore
+
       - name: Commit and push changes
         shell: bash
         run: |
