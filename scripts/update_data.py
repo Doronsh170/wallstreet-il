@@ -17,24 +17,13 @@ ACCOUNTS = ["AIStockSavvy","wallstengine","DeIaone","StockMKTNewz","zerohedge","
 PY_TO_HEB = {0: "שני", 1: "שלישי", 2: "רביעי", 3: "חמישי", 4: "שישי", 5: "שבת", 6: "ראשון"}
 
 # ══════════════════════════════════════════════════════════════
-# ACTIVE GEOPOLITICAL CONTEXT — edit this manually when reality changes.
-# Set to "" (empty string) to disable. The block is injected into every
-# prompt so Gemini stops softening "war" into "tensions".
-# Last edited: 2026-05-05
+# ACTIVE GEOPOLITICAL CONTEXT — optional, externally supplied only.
+# Reliability rule: do NOT hard-code geopolitical facts in the script.
+# If a real, current geopolitical context must be injected, set it in the
+# GitHub Action / environment as ACTIVE_GEOPOLITICAL_CONTEXT.
+# Otherwise leave empty so the review relies only on current sources.
 # ══════════════════════════════════════════════════════════════
-ACTIVE_GEOPOLITICAL_CONTEXT = """
-ACTIVE GEOPOLITICAL CONTEXT — these facts override any softer framing in tweets:
-- The United States is in an ACTIVE WAR with Iran. The war began on February 28, 2026.
-- The US Navy is running Operation "Project Freedom" in the Strait of Hormuz.
-- Israel and the US are jointly engaged. The Strait of Hormuz is intermittently closed and oil shipments are disrupted.
-- This is NOT "tensions", "escalation", "diplomatic crisis", or "regional concerns" — it is a war with active military operations.
-
-LANGUAGE RULES (MANDATORY when describing this conflict):
-- USE: מלחמה, מבצע צבאי, תקיפה, עימות מזוין, מבצע "Project Freedom".
-- DO NOT USE: מתיחות, הסלמה, חששות, "ניסיונות דיפלומטיים להרגעה" — these systematically understate the reality.
-- If a tweet uses softer wording (e.g. "tensions") but the underlying event is a missile strike or naval engagement, the review must use the accurate Hebrew term, not the softened one.
-- Frame market moves accordingly: "על רקע המלחמה במזרח התיכון", not "על רקע המתיחות".
-"""
+ACTIVE_GEOPOLITICAL_CONTEXT = os.environ.get("ACTIVE_GEOPOLITICAL_CONTEXT", "").strip()
 
 # ══════════════════════════════════════════════════════════════
 # EXPECTED STRUCTURE — single source of truth for output format
@@ -103,7 +92,8 @@ _DIRECTION_ASSETS = {
 
 _UP_WORDS = [
     "עולה", "עולים", "עלו", "עלה", "עלייה", "בעלייה", "מטפס", "מטפסים", "טיפס", "טיפסו",
-    "מזנק", "מזנקים", "זינק", "זינקו", "קופץ", "קופצים", "התחזק", "התחזקו", "מתחזק", "מתחזקים"
+    "מזנק", "מזנקים", "זינק", "זינקו", "קופץ", "קופצים", "התחזק", "התחזקו", "מתחזק", "מתחזקים",
+    "מתאושש", "מתאוששת", "מתאוששים", "התאושש", "התאוששה", "התאוששו", "התאוששות", "ריבאונד"
 ]
 _DOWN_WORDS = [
     "יורד", "יורדים", "ירד", "ירדו", "ירידה", "בירידה", "נופל", "נופלים", "נפל", "נפלו",
@@ -278,6 +268,7 @@ _TICKER_UP_TOKENS = [
     "מזנק", "מזנקת", "מזנקים", "זינק", "זינקה", "זינקו",
     "קופץ", "קופצת", "קופצים", "קפץ", "קפצה", "קפצו",
     "מתחזק", "מתחזקת", "התחזק", "התחזקה",
+    "מתאושש", "מתאוששת", "מתאוששים", "התאושש", "התאוששה", "התאוששו", "התאוששות", "ריבאונד",
     "ירוק", "בירוק", "מוסיפה", "מוסיף", "הוסיפה", "הוסיף",
 ]
 _TICKER_DOWN_TOKENS = [
@@ -590,7 +581,7 @@ def fetch_market_data(weekly=False):
     result_lines.extend([
         "",
         "The % changes above are ACCURATE — use them for direction and magnitude.",
-        "For exact index LEVELS (points), gold price ($/oz), oil price ($/barrel), VIX level, and Bitcoin price: ALWAYS use Google Search. Do NOT calculate or estimate them from ETF prices.",
+        "AUTOMATED-PUBLISHING RULE: Do NOT include absolute commodity prices (oil $/barrel, gold $/oz, Bitcoin $ level, VIX point level) unless they are provided by deterministic verified data. Use direction/% only from the ETF proxy data above.",
         "For sector performance (XLE/XLK/XLF/XLY/XLV/XLI/XLP/XLU): USE ONLY the Finnhub numbers above. Do NOT invent sector percentages.",
         "For 10-year Treasury yield: use Google Search to verify the current level — do NOT estimate from TLT price.",
         "If ANY percentage you write contradicts the data above, you are WRONG. Fix it.",
@@ -864,10 +855,10 @@ SHARED_RULES = (ACTIVE_GEOPOLITICAL_CONTEXT + "\n" if ACTIVE_GEOPOLITICAL_CONTEX
 
 CRITICAL — KEY MARKET DATA (MANDATORY VERIFICATION):
 - If VERIFIED MARKET DATA from Finnhub API is provided above the tweets, you MUST use those numbers for index performance (% change). Do NOT override them with numbers from tweets or from memory.
-- Use the verified % changes as-is. For exact index point levels, gold price, oil price, and VIX level: ALWAYS use Google Search. Do NOT calculate them from ETF prices.
-- You MUST verify via Google Search the current prices of: Brent crude oil, WTI crude oil, gold, and any other commodity you mention.
-- If a tweet states a price that seems extreme or unusual, you MUST verify it via Google Search before including it.
-- NEVER trust a single tweet for major price data. Always cross-reference.
+- Use the verified % changes as-is. For exact index point levels, use Google Search only if necessary.
+- AUTOMATED-PUBLISHING RULE: Do NOT write absolute commodity prices such as Brent $/barrel, WTI $/barrel, gold $/oz, Bitcoin $ level, or VIX point level unless they appear in the deterministic VERIFIED MARKET DATA block.
+- Because this project publishes automatically, commodity direction is allowed, but unverified absolute commodity prices are forbidden.
+- NEVER trust a single tweet for major price data. If a commodity price is not in deterministic verified data, omit the price.
 - Directional words are factual claims. Words like "צונח", "יורד", "נחלש", "מזנק", "עולה", "מטפס" MUST match the verified market-data direction block. If verified data says oil is up, do not write oil is falling, even if a tweet's wording suggests pressure.
 - NEVER write vague descriptions like "the market closed in green territory" or "mixed trading" without exact numbers.
 - NEVER claim an index or stock is at an "all-time high" (שיא / שיא כל הזמנים) unless you verify it via Google Search.
@@ -888,7 +879,7 @@ CRITICAL — DATA ACCURACY:
 - EVERY number in the review must come from one of these sources: (1) Finnhub verified data above, (2) a specific tweet, or (3) Google Search verification.
 - NEVER invent, estimate, or recall prices from memory. If you cannot point to a source, do NOT include the number.
 - For the 10-year Treasury yield: verify via Google Search. Do NOT estimate from TLT.
-- For commodity absolute prices (oil $/barrel, gold $/oz): verify via Google Search — do NOT estimate from ETF prices.
+- For commodity absolute prices (oil $/barrel, gold $/oz): do NOT include them in automated reviews unless they are present in deterministic verified data.
 - If a number from a tweet contradicts the Finnhub verified data, the Finnhub data is correct — the tweet is wrong.
 - Getting a number wrong destroys credibility. When in doubt, omit.
 
@@ -2023,24 +2014,155 @@ def save_failed_review(result, blocking_errors, review_type):
         print(f"  Could not save failed-review draft: {e}")
 
 
+
+# ══════════════════════════════════════════════════════════════
+# FINAL HARD QUALITY GATE — blocks publication rather than publishing bad data
+# ══════════════════════════════════════════════════════════════
+
+_FORBIDDEN_ABSOLUTE_PRICE_CONTEXT = [
+    "נפט", "ברנט", "WTI", "Brent", "crude", "חבית",
+    "זהב", "gold", "אונקיה", "oz",
+    "ביטקוין", "Bitcoin", "BTC", "VIX"
+]
+
+_FORBIDDEN_PRICE_PATTERN = re.compile(
+    r'(?:\$\s?\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d{1,3}(?:,\d{3})*(?:\.\d+)?\s?\$|\d{1,3}(?:,\d{3})*(?:\.\d+)?\s?(?:דולר|נקודות))'
+)
+
+_HARD_PROVENANCE_TERMS = [
+    "נפט", "ברנט", "WTI", "חבית", "זהב", "אונקיה", "VIX", "ביטקוין", "BTC",
+    "תשואה", "תשואת", "אג\"ח", "אגח", "Treasury", "S&P", "נאסד", "נאסד\"ק", "דאו", "Russell",
+    "%", "$", "דולר", "מיליארד", "מיליון"
+]
+
+
+def _iter_review_lines(result):
+    if not isinstance(result, dict):
+        return
+    if isinstance(result.get("title"), str):
+        yield "title", result["title"]
+    for section in result.get("sections", []):
+        heading = section.get("heading", "section")
+        content = section.get("content", "")
+        if isinstance(content, list):
+            content = "\n".join(str(x) for x in content)
+        if isinstance(content, str):
+            for line in content.split("\n"):
+                if line.strip():
+                    yield f"section[{heading}]", line.strip()
+    for i, item in enumerate(result.get("items", [])):
+        for field in ("title", "description"):
+            val = item.get(field, "")
+            if isinstance(val, str) and val.strip():
+                yield f"event[{i}].{field}", val.strip()
+
+
+def detect_forbidden_absolute_prices(result, source_bundle=None):
+    """Block absolute commodity prices in auto-published reviews unless they are deterministic.
+    The current verified block uses ETF proxy prices, not real Brent/WTI/gold spot/futures.
+    So a bullet like 'Brent סביב 96.7 דולר לחבית' is not safe for automatic publishing."""
+    warnings = []
+    for label, line in _iter_review_lines(result):
+        if not _has_any_ci(line, _FORBIDDEN_ABSOLUTE_PRICE_CONTEXT):
+            continue
+        if not _FORBIDDEN_PRICE_PATTERN.search(line):
+            continue
+        # Percent changes are allowed; this pattern catches dollar/point levels.
+        warnings.append({
+            "type": "forbidden_absolute_price",
+            "severity": "high",
+            "label": label,
+            "line": line[:500],
+        })
+    return warnings
+
+
+def detect_internal_direction_conflicts(result):
+    """Catch headline/body contradictions in a single bullet.
+    Example: 'הנפט מתאושש בחדות: ... מחירי הנפט רושמים ירידה חדה'."""
+    warnings = []
+    for label, line in _iter_review_lines(result):
+        if not _has_any_ci(line, ["נפט", "ברנט", "WTI", "זהב", "ביטקוין", "VIX", "חוזים", "מדדים"]):
+            continue
+        has_up = _contains_any(line, _UP_WORDS)
+        has_down = _contains_any(line, _DOWN_WORDS)
+        if not (has_up and has_down):
+            continue
+        # Legitimate contrast can be allowed when clearly separated by time.
+        # But if the topic label before ':' claims one direction and the body claims the opposite, block.
+        if ":" in line:
+            topic, body = line.split(":", 1)
+            topic_up, topic_down = _contains_any(topic, _UP_WORDS), _contains_any(topic, _DOWN_WORDS)
+            body_up, body_down = _contains_any(body, _UP_WORDS), _contains_any(body, _DOWN_WORDS)
+            if (topic_up and body_down) or (topic_down and body_up):
+                warnings.append({
+                    "type": "internal_direction_conflict",
+                    "severity": "high",
+                    "label": label,
+                    "line": line[:500],
+                })
+                continue
+        # Also block common contradictory same-line formulation.
+        if re.search(r'(מתאושש|התאוששות|ריבאונד).{0,120}(ירידה|יורד|נחלש|צונח|נופל)', line) or \
+           re.search(r'(ירידה|יורד|נחלש|צונח|נופל).{0,120}(מתאושש|התאוששות|ריבאונד)', line):
+            warnings.append({
+                "type": "internal_direction_conflict",
+                "severity": "high",
+                "label": label,
+                "line": line[:500],
+            })
+    return warnings
+
+
+def hard_provenance_warnings(provenance_warnings):
+    """Only promote provenance warnings that are dangerous for credibility.
+    We do not block harmless list numbers, but we do block market numbers."""
+    hard = []
+    for w in provenance_warnings or []:
+        ctx = (w.get("context") or "") + " " + (w.get("label") or "")
+        if _has_any_ci(ctx, _HARD_PROVENANCE_TERMS):
+            ww = dict(w)
+            ww["type"] = "unverified_market_number"
+            ww["severity"] = "high"
+            hard.append(ww)
+    return hard
+
+
+def final_hard_quality_gate(result, source_bundle, review_type):
+    """Run after all fixes. Anything returned here must block publication."""
+    blocking = []
+    blocking.extend(detect_forbidden_absolute_prices(result, source_bundle))
+    blocking.extend(detect_internal_direction_conflicts(result))
+
+    # Re-run number provenance on the final result. The function mutates metadata only.
+    checked = number_provenance_check(result, source_bundle, review_type)
+    final_provenance = checked.pop("_provenance_warnings", None)
+    blocking.extend(hard_provenance_warnings(final_provenance))
+    return blocking
+
 def should_block_publication(validation_warnings=None, provenance_warnings=None, ticker_warnings=None, narrative_warnings=None):
     """Return a list of blocking errors.
 
-    Balanced default for automated publishing:
-    - Narrative contradictions block publication. This is the embarrassing logic error class
-      the guard was added to catch, for example risk-on + flight-to-safety in the same causal sentence.
-    - Ticker sign-flip warnings are logged and passed to the Gemini fact-checker, but they do NOT
-      block publication by themselves. In pre-market/daily-prep reviews Finnhub quotes can reflect
-      regular-session or stale data, while the bullet may discuss futures, after-hours, guidance,
-      expectations, or a non-price narrative. Blocking on a single ticker warning creates false failures.
-    - Number-provenance warnings do NOT automatically block here because the Gemini fact-checker
-      is already instructed to remove/fix them. They remain logged.
+    Reliability posture for this project: when an automated review contains a hard market-data
+    conflict, do not publish. A stale but clean old review is better than a fresh wrong one.
     """
     blocking = []
 
     high_ticker = [w for w in (ticker_warnings or []) if w.get("severity") == "high"]
     if high_ticker:
-        print(f"  ⚠️  Publication gate noted ticker warnings but will not block on them: {len(high_ticker)}")
+        blocking.append({
+            "type": "ticker_direction_contradiction",
+            "count": len(high_ticker),
+            "examples": high_ticker[:5],
+        })
+
+    hard_prov = hard_provenance_warnings(provenance_warnings)
+    if hard_prov:
+        blocking.append({
+            "type": "unverified_market_numbers",
+            "count": len(hard_prov),
+            "examples": hard_prov[:8],
+        })
 
     high_narrative = [w for w in (narrative_warnings or []) if w.get("severity") == "high"]
     if high_narrative:
@@ -2258,7 +2380,7 @@ YOUR TASK:
 - Fix any number that contradicts the verified data.
 - Fix any factual error (wrong company attribution, wrong political titles, wrong dates, wrong terminology).
 - For sector ETF percentages (XLE/XLK/XLF/XLY/XLV/XLI): if a specific sector number appears in the review that does NOT match the Finnhub data, REMOVE that claim or replace it with a number from the Finnhub data.
-- For 10-year Treasury yield, commodity absolute prices ($/barrel, $/oz), and DXY level: these are NOT in Finnhub. Only keep them if they are clearly reasonable; otherwise remove.
+- For 10-year Treasury yield, commodity absolute prices ($/barrel, $/oz), Bitcoin $ level, and VIX point level: these are NOT in the verified deterministic data. REMOVE those absolute-price claims from automated reviews unless explicitly present in the verified block.
 - DO NOT change the writing style, structure, section count, or section headings.
 - DO NOT remove content — only fix errors or remove clearly-hallucinated numbers.
 - EXCEPTION: if PROVENANCE WARNINGS above flag a number you cannot verify, remove the entire bullet containing it (see provenance instructions above).
@@ -2443,6 +2565,14 @@ def main():
     is_weekly = REVIEW_TYPE in ("weekly_summary", "weekly_prep")
     market_data = fetch_market_data(weekly=is_weekly)
 
+    # Hard reliability gate: for automated market reviews, do not publish without deterministic market data.
+    # Otherwise Gemini may fill price direction/levels from tweets or memory.
+    if REVIEW_TYPE in ("daily_prep", "daily_summary", "weekly_prep", "weekly_summary", "live_news") and not _LAST_MARKET_DATA.get("pcts"):
+        print("❌ Publication blocked: no deterministic Finnhub market data available")
+        save_failed_review({"title": expected_title, "date": review_date, "sections": []},
+                           [{"type": "missing_verified_market_data", "count": 1}], REVIEW_TYPE)
+        sys.exit(2)
+
     # Economic calendar
     if REVIEW_TYPE == "daily_summary":
         econ_data = fetch_economic_data(days_back=1, days_forward=0)
@@ -2547,6 +2677,16 @@ def main():
     result, narrative_warnings = apply_narrative_consistency_guard(result, REVIEW_TYPE)
     narrative_warnings = result.pop("_narrative_warnings", narrative_warnings or None)
 
+    # Layer 4d-pre: final deterministic hard quality gate after all fixes.
+    print("\n── Layer 4d-pre: Final hard quality gate ──")
+    final_blocking_errors = final_hard_quality_gate(result, source_bundle, REVIEW_TYPE)
+    if final_blocking_errors:
+        print(f"  ⚠️ Final hard gate found {len(final_blocking_errors)} blocking issue(s)")
+        for err in final_blocking_errors[:8]:
+            print(f"     - {err.get('type')}: {err.get('line', err.get('context', ''))[:220]}")
+    else:
+        print("  ✅ Final hard gate passed")
+
     # Layer 4d: Publication gate — if a contradiction is too severe, do not mutate data.json.
     print("\n── Layer 4d: Publication gate ──")
     blocking_errors = should_block_publication(
@@ -2555,6 +2695,7 @@ def main():
         ticker_warnings=ticker_warnings,
         narrative_warnings=narrative_warnings,
     )
+    blocking_errors.extend(final_blocking_errors)
     if blocking_errors:
         print("❌ Publication blocked. Manual review required.")
         for err in blocking_errors:
