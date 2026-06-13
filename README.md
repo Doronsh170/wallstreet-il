@@ -28,9 +28,9 @@
 2. ניתוח וכתיבה באמצעות Gemini AI עם Google Search
 3. פרסום אוטומטי לאתר דרך GitHub Pages
 
-## מקורות
+ 
 
-@AIStockSavvy · @wallstengine · @DeIaone · @StockMKTNewz · @zerohedge · @financialjuice
+
 
 ## ⚠️ הבהרה
 
