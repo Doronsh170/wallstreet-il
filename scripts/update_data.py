@@ -69,6 +69,30 @@ def build_expected_title(review_type, title_day_name, title_date_str, week_range
 _LAST_MARKET_DATA = {"prices": {}, "pcts": {}}
 _LAST_SPOT_DATA = {}
 
+# ETF proxies are useful for direction, but their share prices are NOT the
+# underlying asset price. These sets drive both prompt formatting and final
+# publication guards.
+INDEX_PROXY_SYMBOLS = {"SPY", "QQQ", "DIA", "IWM"}
+SECTOR_ETF_SYMBOLS = {"XLE", "XLK", "XLF", "XLY", "XLV", "XLI", "XLP", "XLU"}
+COMMODITY_PROXY_SYMBOLS = {"USO", "BNO", "GLD", "SLV"}
+CRYPTO_PROXY_SYMBOLS = {"IBIT"}
+RATE_DOLLAR_VOL_PROXY_SYMBOLS = {"TLT", "UUP", "VIXY"}
+
+PROXY_PUBLICATION_NAMES = {
+    "SPY": "S&P 500 ETF proxy — NOT S&P futures or index level",
+    "QQQ": "Nasdaq 100 ETF proxy — NOT Nasdaq futures or index level",
+    "DIA": "Dow Jones ETF proxy — NOT Dow futures or index level",
+    "IWM": "Russell 2000 ETF proxy — NOT Russell futures or index level",
+    "USO": "WTI oil ETF proxy — NOT WTI $/barrel",
+    "BNO": "Brent oil ETF proxy — NOT Brent $/barrel",
+    "GLD": "Gold ETF proxy — NOT gold $/oz",
+    "SLV": "Silver ETF proxy — NOT silver $/oz",
+    "IBIT": "Bitcoin ETF proxy — NOT BTC spot price",
+    "TLT": "Long-bond ETF proxy — NOT Treasury yield",
+    "UUP": "Dollar ETF proxy — NOT DXY level",
+    "VIXY": "VIX ETF proxy — NOT VIX index level",
+}
+
 
 # Deterministic market-direction layer.
 # X remains the news/narrative source. Price direction must come from verified market data.
@@ -562,14 +586,41 @@ def fetch_market_data(weekly=False):
                 pct = d.get("dp", 0)
                 prev = d.get("pc", 0)
                 if price > 0:
+                    # Store share prices internally for sanity guards, but do NOT expose
+                    # ETF share prices to the model. Exposing USO/GLD/IBIT prices caused
+                    # the model to publish them as WTI/gold/BTC spot prices.
                     etf_prices[symbol] = price
                     etf_pcts[symbol] = pct
                     direction = "+" if pct >= 0 else ""
-                    if symbol == "IBIT":
-                        lines.append(f"  Bitcoin direction proxy (IBIT ETF; NOT BTC spot): daily {direction}{pct:.2f}%. Do NOT use the IBIT share price as Bitcoin's dollar price.")
+
+                    if symbol in INDEX_PROXY_SYMBOLS:
+                        lines.append(
+                            f"  {PROXY_PUBLICATION_NAMES.get(symbol, label)}: daily {direction}{pct:.2f}% on the ETF/proxy instrument only. "
+                            f"Use ONLY as broad risk-direction context. NEVER write this as futures %, index %, or index points."
+                        )
+                    elif symbol in SECTOR_ETF_SYMBOLS:
+                        lines.append(
+                            f"  {label}: daily {direction}{pct:.2f}% on the sector ETF. This % may be used ONLY as sector ETF performance."
+                        )
+                    elif symbol in COMMODITY_PROXY_SYMBOLS:
+                        lines.append(
+                            f"  {PROXY_PUBLICATION_NAMES.get(symbol, label)}: daily {direction}{pct:.2f}% on the ETF/proxy instrument only. "
+                            f"Use ONLY for direction. NEVER publish the ETF share price as commodity spot/futures price."
+                        )
+                    elif symbol in CRYPTO_PROXY_SYMBOLS:
+                        lines.append(
+                            f"  {PROXY_PUBLICATION_NAMES.get(symbol, label)}: daily {direction}{pct:.2f}% on the ETF/proxy instrument only. "
+                            f"Use ONLY for direction. NEVER use this ETF as Bitcoin's dollar price."
+                        )
+                    elif symbol in RATE_DOLLAR_VOL_PROXY_SYMBOLS:
+                        lines.append(
+                            f"  {PROXY_PUBLICATION_NAMES.get(symbol, label)}: daily {direction}{pct:.2f}% on the ETF/proxy instrument only. "
+                            f"Use ONLY for direction. NEVER publish the ETF share price as yield, DXY, or VIX level."
+                        )
                     else:
-                        lines.append(f"  {label}: ${price:.2f} (daily: {direction}{pct:.2f}%), prev close: ${prev:.2f}")
-                    print(f"  Finnhub {symbol}: ${price:.2f} ({direction}{pct:.2f}%)")
+                        lines.append(f"  {label}: daily {direction}{pct:.2f}% on the listed security.")
+
+                    print(f"  Finnhub {symbol}: ${price:.2f} ({direction}{pct:.2f}%) [price hidden from prompt when proxy]")
         except Exception as e:
             print(f"  Finnhub error for {symbol}: {e}")
 
@@ -620,11 +671,19 @@ def fetch_market_data(weekly=False):
                                 prev_friday_close = all_before[-1]
                                 weekly_pct = ((week_close - prev_friday_close) / prev_friday_close) * 100
                                 direction = "+" if weekly_pct >= 0 else ""
-                                if symbol == "IBIT":
-                                    weekly_lines.append(f"  Bitcoin direction proxy (IBIT ETF; NOT BTC spot): weekly {direction}{weekly_pct:.2f}%. Do NOT use ETF share prices as Bitcoin's dollar price.")
+                                if symbol in INDEX_PROXY_SYMBOLS:
+                                    weekly_lines.append(
+                                        f"  {PROXY_PUBLICATION_NAMES.get(symbol, label)}: weekly {direction}{weekly_pct:.2f}% on the ETF/proxy instrument only. NEVER write this as futures %, index %, or index points."
+                                    )
+                                elif symbol in SECTOR_ETF_SYMBOLS:
+                                    weekly_lines.append(f"  {label}: weekly {direction}{weekly_pct:.2f}% on the sector ETF.")
+                                elif symbol in COMMODITY_PROXY_SYMBOLS or symbol in CRYPTO_PROXY_SYMBOLS or symbol in RATE_DOLLAR_VOL_PROXY_SYMBOLS:
+                                    weekly_lines.append(
+                                        f"  {PROXY_PUBLICATION_NAMES.get(symbol, label)}: weekly {direction}{weekly_pct:.2f}% on the ETF/proxy instrument only. Use only for direction, not absolute price/level."
+                                    )
                                 else:
-                                    weekly_lines.append(f"  {label}: weekly {direction}{weekly_pct:.2f}% (from ${prev_friday_close:.2f} to ${week_close:.2f})")
-                                print(f"  Finnhub {symbol} WEEKLY: {direction}{weekly_pct:.2f}%")
+                                    weekly_lines.append(f"  {label}: weekly {direction}{weekly_pct:.2f}% on the listed security.")
+                                print(f"  Finnhub {symbol} WEEKLY: {direction}{weekly_pct:.2f}% [levels hidden from prompt when proxy]")
             except Exception as e:
                 print(f"  Finnhub weekly error for {symbol}: {e}")
 
@@ -655,12 +714,14 @@ def fetch_market_data(weekly=False):
 
     result_lines.extend([
         "",
-        "The % changes above are ACCURATE — use them for direction and magnitude.",
-        "For exact index LEVELS (points), gold price ($/oz), oil price ($/barrel), and VIX level: use Google Search. Do NOT calculate or estimate them from ETF prices.",
-        "For Bitcoin absolute price: use ONLY the 'Bitcoin spot (BTC-USD)' line above when available. NEVER use IBIT's ETF share price as the Bitcoin price.",
-        "For sector performance (XLE/XLK/XLF/XLY/XLV/XLI/XLP/XLU): USE ONLY the Finnhub numbers above. Do NOT invent sector percentages.",
-        "For 10-year Treasury yield: use Google Search to verify the current level — do NOT estimate from TLT price.",
-        "If ANY percentage you write contradicts the data above, you are WRONG. Fix it.",
+        "PUBLICATION RULES FOR THE DATA ABOVE:",
+        "- ETF/proxy percentages above are valid ONLY for the proxy instrument's direction/magnitude, not for underlying futures, index levels, commodity prices, crypto spot, DXY, VIX, or Treasury yields.",
+        "- NEVER write SPY/QQQ/DIA/IWM percentages as futures percentages. If you need futures %, verify via Google Search or omit exact %. If not verified, write only a directional sentence.",
+        "- NEVER publish USO/BNO/GLD/SLV/IBIT/TLT/UUP/VIXY share prices as WTI, Brent, gold, silver, Bitcoin, yield, DXY, or VIX levels. Those share prices are intentionally hidden from this prompt.",
+        "- For exact index LEVELS (points), gold price ($/oz), oil price ($/barrel), VIX level, DXY, and Treasury yields: use Google Search. Do NOT calculate or estimate them from ETF prices.",
+        "- For Bitcoin absolute price: use ONLY the 'Bitcoin spot (BTC-USD)' line above when available. NEVER use IBIT's ETF share price as the Bitcoin price.",
+        "- For sector performance (XLE/XLK/XLF/XLY/XLV/XLI/XLP/XLU): USE ONLY the sector ETF percentages above. Do NOT invent sector percentages.",
+        "- If you cannot verify an absolute price/level from an appropriate source, omit the number and keep only the direction.",
         "══════════════════════════════════════════════════════════════════════════════════════════\n"
     ])
 
@@ -938,8 +999,9 @@ CRITICAL — NO CITATIONS OR LINKS INSIDE OUTPUT:
 - A citation attached to the wrong claim is worse than no citation.
 
 CRITICAL — KEY MARKET DATA (MANDATORY VERIFICATION):
-- If VERIFIED MARKET DATA from Finnhub API is provided above the tweets, you MUST use those numbers for index performance (% change). Do NOT override them with numbers from tweets or from memory.
-- Use the verified % changes as-is. For exact index point levels, gold price, oil price, and VIX level: ALWAYS use Google Search. Do NOT calculate them from ETF prices.
+- If VERIFIED MARKET DATA from Finnhub API is provided above the tweets, read each label literally. Most index/commodity/crypto entries are ETF PROXIES, not underlying futures or spot prices.
+- SPY/QQQ/DIA/IWM percentages are ETF proxy percentages only. NEVER write them as futures %, index %, or index-point levels. For futures %, verify via Google Search or omit exact %.
+- Use verified sector ETF percentages as sector ETF performance only. For exact index point levels, gold price, oil price, VIX level, DXY, and yields: ALWAYS use Google Search. Do NOT calculate them from ETF prices.
 - You MUST verify via Google Search the current prices of: Brent crude oil, WTI crude oil, gold, and any other commodity you mention.
 - If a tweet states a price that seems extreme or unusual, you MUST verify it via Google Search before including it.
 - NEVER trust a single tweet for major price data. Always cross-reference.
@@ -964,7 +1026,7 @@ CRITICAL — DATA ACCURACY:
 - NEVER invent, estimate, or recall prices from memory. If you cannot point to a source, do NOT include the number.
 - For the 10-year Treasury yield: verify via Google Search. Do NOT estimate from TLT.
 - For commodity absolute prices (oil $/barrel, gold $/oz): verify via Google Search — do NOT estimate from ETF prices.
-- If a number from a tweet contradicts the Finnhub verified data, the Finnhub data is correct — the tweet is wrong.
+- If a number from a tweet contradicts appropriate verified market data, the verified data is correct — the tweet is wrong. But ETF proxy data must not be transformed into underlying futures/spot/level data.
 - Getting a number wrong destroys credibility. When in doubt, omit.
 
 CRITICAL — CONSISTENCY:
@@ -979,7 +1041,7 @@ CRITICAL — FINANCIAL TERMINOLOGY:
 - NASDAQ INDICES — there are TWO different indices, do NOT confuse them:
   * נאסד"ק 100 (Nasdaq 100 / NDX) — 100 החברות הגדולות בבורסת נאסד"ק (ללא פיננסיים). QQQ עוקב אחרי מדד זה. רמה בסביבות 25,000-26,000 נקודות.
   * נאסד"ק קומפוזיט (Nasdaq Composite / IXIC) — כל החברות בבורסת נאסד"ק. רמה בסביבות 23,000-24,000 נקודות.
-  * The Finnhub data uses QQQ which tracks the Nasdaq 100. When reporting QQQ % change, label it as "נאסד"ק 100" or "Nasdaq 100".
+  * QQQ tracks Nasdaq 100 but is still an ETF proxy. When reporting QQQ %, label it as QQQ/Nasdaq-100 ETF proxy performance, NOT Nasdaq futures or the official index move.
   * If you report an index LEVEL (points), verify via Google Search which index the number belongs to. A level of ~24,000 is the Composite, not the 100. A level of ~25,500 is the 100, not the Composite.
   * NEVER mix them — do not write "נאסד"ק 100" and then give the Composite level.
 
@@ -2163,6 +2225,187 @@ def apply_absolute_price_sanity_guard(result):
             item["title"] = fix_text(item["title"])
     return result
 
+
+
+# ══════════════════════════════════════════════════════════════
+# ETF PROXY PUBLICATION GUARD — hard stop for SPY/USO/GLD/IBIT mistakes
+# ══════════════════════════════════════════════════════════════
+
+def _num_close(a, b, rel_tol=0.0025, abs_tol=0.03):
+    try:
+        a = float(str(a).replace(',', ''))
+        b = float(str(b).replace(',', ''))
+    except Exception:
+        return False
+    return abs(a - b) <= max(abs_tol, abs(b) * rel_tol)
+
+
+def _line_has_any(line, terms):
+    low = line.lower()
+    return any(t.lower() in low for t in terms)
+
+
+def _extract_numbers_from_line(line):
+    return [m.group(1) for m in _NUM_TOKEN.finditer(line or "")]
+
+
+def apply_etf_proxy_publication_guard(result):
+    """Remove/fix public text that transforms ETF proxy prices or percentages into
+    underlying asset prices/levels.
+
+    This is the critical guard for errors like:
+    - SPY +0.54% -> "S&P futures +0.54%"
+    - USO $125.43 -> "WTI $125.43 per barrel"
+    - GLD $386.54 -> "gold $386.54/oz"
+    - IBIT $36 -> "Bitcoin $36"
+    """
+    if not isinstance(result, dict):
+        return result
+
+    prices = (_LAST_MARKET_DATA.get("prices") or {})
+    pcts = (_LAST_MARKET_DATA.get("pcts") or {})
+    futures_proxy_symbols = [x for x in ("SPY", "QQQ", "DIA", "IWM") if x in pcts]
+    commodity_proxy_symbols = [x for x in ("USO", "BNO", "GLD", "SLV") if x in prices]
+    crypto_proxy_symbols = [x for x in ("IBIT",) if x in prices]
+    rate_level_proxy_symbols = [x for x in ("TLT", "UUP", "VIXY") if x in prices]
+
+    def line_contains_proxy_pct(line, symbols):
+        if "%" not in line:
+            return False
+        for raw in _extract_numbers_from_line(line):
+            for sym in symbols:
+                if _num_close(raw, abs(float(pcts.get(sym, 999999))), abs_tol=0.015):
+                    return True
+        return False
+
+    def line_contains_proxy_price(line, symbols):
+        price_like = any(tok in line for tok in ["$", "דולר", "לחבית", "אונק", "לאונק", "נקודות"])
+        if not price_like:
+            return False
+        for raw in _extract_numbers_from_line(line):
+            for sym in symbols:
+                if _num_close(raw, float(prices.get(sym, -999999))):
+                    return True
+        return False
+
+    def fix_line(line):
+        if not isinstance(line, str) or not line.strip():
+            return line
+        original = line
+
+        # 1) Futures/index % accidentally sourced from SPY/QQQ/DIA/IWM.
+        if _line_has_any(line, ["חוזים", "futures", "premarket", "טרום"]):
+            if line_contains_proxy_pct(line, futures_proxy_symbols):
+                line = "החוזים העתידיים מצביעים על פתיחה חיובית בוול סטריט."
+                print("  ✅ ETF proxy guard removed futures % derived from index ETF proxy")
+
+        # 2) Commodity ETF share price published as spot/futures price.
+        if _line_has_any(line, ["נפט", "wti", "brent", "ברנט", "זהב", "gold", "כסף", "silver"]):
+            if line_contains_proxy_price(line, commodity_proxy_symbols):
+                if _line_has_any(line, ["נפט", "wti", "brent", "ברנט"]):
+                    if _contains_any(line, _DOWN_WORDS):
+                        line = "מחירי הנפט יורדים על רקע ההתפתחויות הגיאופוליטיות."
+                    elif _contains_any(line, _UP_WORDS):
+                        line = "מחירי הנפט עולים על רקע ההתפתחויות בשוק האנרגיה."
+                    else:
+                        line = "מחירי הנפט נעים בתנודתיות על רקע ההתפתחויות הגיאופוליטיות."
+                elif _line_has_any(line, ["זהב", "gold"]):
+                    line = "הזהב נסחר בתנודתיות מתונה."
+                elif _line_has_any(line, ["כסף", "silver"]):
+                    line = "הכסף נסחר בתנודתיות."
+                # Preserve a valid BTC spot sentence if the model bundled gold/oil and BTC in one bullet.
+                if _line_has_any(original, ["ביטקוין", "bitcoin", "btc"]):
+                    btc = _LAST_SPOT_DATA.get("BTC_USD") or {}
+                    btc_price = btc.get("price")
+                    if isinstance(btc_price, (int, float)) and btc_price > 1000:
+                        line = line.rstrip(" .") + f"; ביטקוין נסחר סביב {btc_price:,.0f} דולר."
+                print("  ✅ ETF proxy guard removed commodity price derived from ETF share price")
+
+        # 3) IBIT share price as BTC spot. Prefer real BTC spot if available.
+        if _line_has_any(line, ["ביטקוין", "bitcoin", "btc"]) and not _line_has_any(line, ["ibit"]):
+            if line_contains_proxy_price(line, crypto_proxy_symbols):
+                btc = _LAST_SPOT_DATA.get("BTC_USD") or {}
+                btc_price = btc.get("price")
+                if isinstance(btc_price, (int, float)) and btc_price > 1000:
+                    line = re.sub(r'(?<!\d)(\d{1,3}(?:,\d{3})*|\d{1,3}(?:\.\d+)?)(?=\s*(?:דולר|USD|\$))', f"{btc_price:,.0f}", line)
+                else:
+                    line = "ביטקוין נסחר בתנודתיות."
+                print("  ✅ ETF proxy guard fixed BTC price derived from IBIT ETF")
+
+        # 4) TLT/UUP/VIXY share prices as yield/DXY/VIX levels.
+        if _line_has_any(line, ["תשוא", "yield", "dxy", "דולר", "vix", "תנודתיות"]):
+            if line_contains_proxy_price(line, rate_level_proxy_symbols):
+                if _line_has_any(line, ["vix", "תנודתיות"]):
+                    line = "מדד התנודתיות נדרש לאימות ממקור ייעודי."
+                elif _line_has_any(line, ["dxy", "דולר"]):
+                    line = "הדולר נדרש לאימות מול מדד DXY או מקור מטבע ייעודי."
+                else:
+                    line = "תשואות האג\"ח נדרשות לאימות ממקור תשואות ייעודי."
+                print("  ✅ ETF proxy guard removed rate/dollar/vol level derived from ETF share price")
+
+        return line if line != original else original
+
+    def fix_text(text):
+        if not isinstance(text, str):
+            return text
+        return "\n".join(fix_line(line) for line in text.split("\n"))
+
+    for section in result.get("sections", []) or []:
+        c = section.get("content")
+        if isinstance(c, str):
+            section["content"] = fix_text(c)
+        elif isinstance(c, list):
+            section["content"] = [fix_text(x) if isinstance(x, str) else x for x in c]
+    for item in result.get("items", []) or []:
+        if isinstance(item.get("title"), str):
+            item["title"] = fix_text(item["title"])
+        if isinstance(item.get("description"), str):
+            item["description"] = fix_text(item["description"])
+    return result
+
+
+def final_hard_stop_checks(result):
+    """Fail the run instead of publishing if critical ETF-proxy errors survive."""
+    if not isinstance(result, dict):
+        return result
+
+    prices = (_LAST_MARKET_DATA.get("prices") or {})
+    pcts = (_LAST_MARKET_DATA.get("pcts") or {})
+    fatal = []
+
+    def scan_line(line, label):
+        if not isinstance(line, str):
+            return
+        nums = _extract_numbers_from_line(line)
+        if _line_has_any(line, ["חוזים", "futures", "premarket", "טרום"]) and "%" in line:
+            for raw in nums:
+                for sym in ("SPY", "QQQ", "DIA", "IWM"):
+                    if sym in pcts and _num_close(raw, abs(float(pcts[sym])), abs_tol=0.015):
+                        fatal.append(f"{label}: futures/index % appears to be {sym} ETF proxy ({raw}%)")
+        if _line_has_any(line, ["נפט", "wti", "brent", "ברנט", "זהב", "gold", "כסף", "silver", "ביטקוין", "bitcoin", "btc", "vix", "dxy", "תשוא"]):
+            for raw in nums:
+                for sym in ("USO", "BNO", "GLD", "SLV", "IBIT", "TLT", "UUP", "VIXY"):
+                    if sym in prices and _num_close(raw, float(prices[sym])):
+                        fatal.append(f"{label}: absolute price/level appears to be {sym} ETF proxy share price ({raw})")
+
+    for i, section in enumerate(result.get("sections", []) or []):
+        c = section.get("content", "")
+        if isinstance(c, list):
+            c = "\n".join(str(x) for x in c)
+        for j, line in enumerate(str(c).split("\n")):
+            scan_line(line, f"section[{i}] line[{j}]")
+    for i, item in enumerate(result.get("items", []) or []):
+        scan_line(item.get("title", ""), f"event[{i}].title")
+        scan_line(item.get("description", ""), f"event[{i}].description")
+
+    if fatal:
+        print("\n  ❌ FINAL HARD STOP — critical ETF proxy publication errors remain:")
+        for f in fatal[:20]:
+            print(f"     - {f}")
+        raise RuntimeError("Critical ETF proxy publication error: refusing to publish inaccurate market review")
+
+    print("  ✅ Final hard stop checks passed — no ETF proxy price/futures leakage")
+    return result
 
 # ══════════════════════════════════════════════════════════════
 # FACT-CHECKER
