@@ -929,6 +929,14 @@ SHARED_RULES = (ACTIVE_GEOPOLITICAL_CONTEXT + "\n" if ACTIVE_GEOPOLITICAL_CONTEX
 - Start each section directly with the key fact. No generic opening sentences.
 - Output pure JSON only, no backticks, no explanations.
 
+CRITICAL — NO CITATIONS OR LINKS INSIDE OUTPUT:
+- The website pages are clean Hebrew market briefs, not research footnotes.
+- NEVER write markdown links such as [source](https://...).
+- NEVER write raw URLs, domains, utm_source=openai, footnote markers like [1], or citation parentheses at the end of bullets.
+- Do NOT attach a source name to a claim unless that exact source directly supports the whole bullet.
+- Prefer no source attribution inside bullets. If attribution is essential, use plain text only, e.g. "לפי Reuters", and only when the source directly supports the claim.
+- A citation attached to the wrong claim is worse than no citation.
+
 CRITICAL — KEY MARKET DATA (MANDATORY VERIFICATION):
 - If VERIFIED MARKET DATA from Finnhub API is provided above the tweets, you MUST use those numbers for index performance (% change). Do NOT override them with numbers from tweets or from memory.
 - Use the verified % changes as-is. For exact index point levels, gold price, oil price, and VIX level: ALWAYS use Google Search. Do NOT calculate them from ETF prices.
@@ -987,7 +995,9 @@ CRITICAL — CURRENT POLITICAL LEADERS:
 CRITICAL — US-ISRAEL TIME CONVERSION:
 - US market opens at 9:30 AM ET, closes at 4:00 PM ET.
 - To convert US Eastern Time to Israel time, use the offset provided below.
-- NEVER guess the time offset — use ONLY the value calculated for today."""
+- NEVER guess the time offset — use ONLY the value calculated for today.
+- Do NOT confuse 9:30 ET market open with 8:30 ET macro releases. Empire State Manufacturing is normally 8:30 ET. Industrial Production and Capacity Utilization are normally 9:15 ET. In Israel daylight-saving time this is usually 15:30 and 16:15, while market open is 16:30.
+- If several macro events occur at different ET times, DO NOT put all of them at 9:30 ET or 16:30 Israel time."""
 
 def get_us_israel_offset(now):
     year = now.year
@@ -1019,8 +1029,9 @@ def get_time_conversion_block(now):
     return f"""
 US-ISRAEL TIME OFFSET TODAY: +{offset} hours (add {offset} hours to US Eastern Time)
 Key times in Israel time today:
-- US economic data releases (CPI, NFP, PPI, GDP, Jobless Claims): {convert(8,30)} שעון ישראל
-- ISM PMI, JOLTS, Consumer Confidence: {convert(10,0)} שעון ישראל
+- 8:30 ET macro releases (CPI, NFP, PPI, GDP, Jobless Claims, Empire State Manufacturing): {convert(8,30)} שעון ישראל
+- 9:15 ET macro releases (Industrial Production, Capacity Utilization): {convert(9,15)} שעון ישראל
+- 10:00 ET macro releases (ISM PMI, JOLTS, Consumer Confidence, NAHB): {convert(10,0)} שעון ישראל
 - FOMC rate decision / FOMC minutes: {convert(14,0)} שעון ישראל
 - Fed Chair press conference: {convert(14,30)} שעון ישראל
 - US market open: {convert(9,30)} שעון ישראל
@@ -1493,6 +1504,102 @@ def debullet(text):
     if len(cleaned) <= 1:
         return cleaned[0] if cleaned else ""
     return " ".join(cleaned)
+
+
+def strip_output_links_and_citations(result):
+    """Remove markdown/web-search citation artifacts from the JSON that is written to data.json.
+    The public pages should contain clean Hebrew text. Bad or misplaced citations reduce trust and
+    OpenAI web-search often emits markdown links that the HTML renderer displays verbatim.
+    """
+    def clean_text(s):
+        if not isinstance(s, str):
+            return s
+        original = s
+        # Remove standalone citation parentheses, e.g. ([apnews.com](https://...)).
+        s = re.sub(r'\s*\(\s*\[[^\]]{1,80}\]\(https?://[^\)]*\)\s*\)', '', s)
+        # Remove markdown links but keep readable anchor text when it is not just a domain.
+        def repl_link(m):
+            label = m.group(1).strip()
+            if re.search(r'\.(com|org|net|gov|io|co|il)\b', label, re.I):
+                return ''
+            return label
+        s = re.sub(r'\[([^\]]{1,120})\]\(https?://[^\)]*\)', repl_link, s)
+        # Remove raw URLs and tracking leftovers.
+        s = re.sub(r'https?://\S+', '', s)
+        s = re.sub(r'\?utm_source=openai\b', '', s)
+        s = re.sub(r'utm_source=openai\b', '', s)
+        # Remove footnote-like citations.
+        s = re.sub(r'\s*\[\d+(?:,\s*\d+)*\]', '', s)
+        # Remove empty parentheses left after citation stripping.
+        s = re.sub(r'\s*\(\s*\)', '', s)
+        s = re.sub(r'\s+([,.;:])', r'\1', s)
+        s = re.sub(r'[ \t]{2,}', ' ', s)
+        # Clean doubled spaces before newlines but keep bullet line breaks.
+        s = "\n".join(line.strip() for line in s.split("\n"))
+        if s != original:
+            print("  ✅ Removed markdown/web citation artifacts from output text")
+        return s.strip()
+
+    def walk(x):
+        if isinstance(x, str):
+            return clean_text(x)
+        if isinstance(x, list):
+            return [walk(i) for i in x]
+        if isinstance(x, dict):
+            return {k: walk(v) for k, v in x.items()}
+        return x
+
+    return walk(result)
+
+
+def apply_macro_time_guard(result, review_type, now):
+    """Deterministic guard for the most common time error after switching models:
+    confusing 9:30 ET market open with 8:30 ET / 9:15 ET macro releases.
+    """
+    if review_type not in {"daily_prep", "live_news"} or not isinstance(result, dict):
+        return result
+    offset = get_us_israel_offset(now)
+    empire_il = f"{8 + offset}:30"
+    ip_il = f"{9 + offset}:15"
+    open_il = f"{9 + offset}:30"
+    canonical = (
+        f"* מאקרו היום: מדד Empire State Manufacturing מתפרסם ב-{empire_il} שעון ישראל; "
+        f"Industrial Production ו-Capacity Utilization מתפרסמים ב-{ip_il}; פתיחת המסחר בוול סטריט ב-{open_il}."
+    )
+
+    def fix_content(text):
+        if not isinstance(text, str):
+            return text
+        lines = text.split("\n")
+        out = []
+        changed = False
+        for line in lines:
+            low = line.lower()
+            has_empire = "empire" in low or "אמפייר" in line or "ניו יורק" in line
+            has_ip = "industrial production" in low or "capacity utilization" in low or "ייצור תעשייתי" in line or "ניצולת" in line
+            has_market_open_time = "16:30" in line or "9:30" in line
+            if has_empire and has_ip and has_market_open_time:
+                out.append(canonical)
+                changed = True
+            elif has_empire and has_market_open_time:
+                fixed = re.sub(r'16:30', empire_il, line)
+                fixed = re.sub(r'9:30\s*ET', '8:30 ET', fixed)
+                fixed = re.sub(r'\(9:30\s*ET\)', '(8:30 ET)', fixed)
+                out.append(fixed)
+                changed = changed or (fixed != line)
+            else:
+                out.append(line)
+        if changed:
+            print("  ✅ Macro time guard fixed Empire/IP timing")
+        return "\n".join(out)
+
+    for section in result.get("sections", []) or []:
+        c = section.get("content")
+        if isinstance(c, str):
+            section["content"] = fix_content(c)
+        elif isinstance(c, list):
+            section["content"] = [fix_content(x) if isinstance(x, str) else x for x in c]
+    return result
 
 def enforce_structure(result, review_type, expected_title):
     """Force the model output to match the structure expected by the HTML renderer.
@@ -2077,7 +2184,7 @@ def fact_check_with_openai(result, market_data, review_type, provenance_warnings
         lines = ["\nPROVENANCE WARNINGS — these numbers from the review were NOT found in any source:"]
         for w in provenance_warnings[:15]:
             lines.append(f"- In {w['label']}: number '{w['number']}' (context: ...{w['context']}...)")
-        lines.append("\nFor each warning above: either (a) the number is correct and you can verify it via your own knowledge — keep the bullet; or (b) the number is a hallucination — REMOVE the entire bullet containing that number from the content. Do NOT just silently fix the number to something else — if it can't be verified, remove the claim.")
+        lines.append("\nFor each warning above: if the number is not explicitly supported by the VERIFIED MARKET DATA, the supplied source tweets/posts, prior context, or a fresh web-search result you can directly verify, REMOVE the entire bullet containing that number. Do NOT rely on memory or plausibility. Do NOT silently fix the number unless a verified source provides the corrected value.")
         provenance_block = "\n".join(lines)
 
     # Build the ticker direction block — these are sign-flip errors caught by Finnhub
@@ -2109,7 +2216,7 @@ THE REVIEW TO CHECK:
 {review_json}
 
 YOUR TASK:
-- Compare EVERY number, percentage, and factual claim in the review against the verified data and your own knowledge.
+- Compare EVERY number, percentage, and factual claim in the review against verified data and explicit sources only. Do NOT rely on memory or plausibility.
 - Fix any number that contradicts the verified data.
 - Fix any factual error (wrong company attribution, wrong political titles, wrong dates, wrong terminology).
 - For sector ETF percentages (XLE/XLK/XLF/XLY/XLV/XLI): if a specific sector number appears in the review that does NOT match the Finnhub data, REMOVE that claim or replace it with a number from the Finnhub data.
@@ -2139,7 +2246,7 @@ COMMON ERRORS TO CATCH:
 - Directional wording must match the verified market data. If oil proxies are positive, phrases like "מחירי הנפט צונחים" are factual errors. If oil proxies are negative, phrases like "מחירי הנפט מזנקים" are factual errors.
 - Geopolitical softening: if the review describes the US-Iran war as "tensions" or "escalation" or "diplomatic crisis", REWRITE using accurate terms (מלחמה, מבצע צבאי, תקיפה).
 
-OUTPUT: Return the corrected review as valid JSON in EXACTLY the same structure (same title, same section headings, same number of sections — for live_news that means exactly 1 section, for others exactly 2). No backticks, no explanations — pure JSON only."""
+OUTPUT: Return the corrected review as valid JSON in EXACTLY the same structure (same title, same section headings, same number of sections — exactly 1 section for all review pages except events). No backticks, no explanations — pure JSON only."""
 
     try:
         checked = call_openai_json(
@@ -2147,7 +2254,7 @@ OUTPUT: Return the corrected review as valid JSON in EXACTLY the same structure 
             temperature=0.1,
             model=OPENAI_FAST_MODEL,
             max_output_tokens=8192,
-            use_web_search=False,
+            use_web_search=True,
             timeout=120,
         )
 
@@ -2360,6 +2467,14 @@ def main():
     print("\n── Layer 4c: Market direction guard ──")
     result = apply_market_direction_guard(result, REVIEW_TYPE)
 
+    # Layer 4d: Macro release time guard — prevents 9:30 ET market-open confusion
+    print("\n── Layer 4d: Macro time guard ──")
+    result = apply_macro_time_guard(result, REVIEW_TYPE, now)
+
+    # Layer 4e: Strip citation/link artifacts from web-search output
+    print("\n── Layer 4e: Output citation sanitizer ──")
+    result = strip_output_links_and_citations(result)
+
     # Layer 5: Re-enforce structure (defensive — fact-checker sometimes alters section headings)
     print("\n── Layer 5: Final structure enforcement ──")
     result = enforce_structure(result, REVIEW_TYPE, expected_title)
@@ -2367,6 +2482,10 @@ def main():
     # Layer 6: Pre-market tense guard (daily_prep only, only if run before US market open)
     print("\n── Layer 6: Pre-market tense guard ──")
     result = apply_pre_market_tense_guard(result, REVIEW_TYPE)
+
+    # Layer 7: Final citation sanitizer after all model/structure passes
+    print("\n── Layer 7: Final output citation sanitizer ──")
+    result = strip_output_links_and_citations(result)
     print("── Validation complete ──\n")
 
     # Defensive: strip any internal metadata before persisting
