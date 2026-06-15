@@ -67,6 +67,7 @@ def build_expected_title(review_type, title_day_name, title_date_str, week_range
     return ""
 
 _LAST_MARKET_DATA = {"prices": {}, "pcts": {}}
+_LAST_SPOT_DATA = {}
 
 
 # Deterministic market-direction layer.
@@ -455,8 +456,58 @@ def apply_ticker_direction_guard(result, ticker_quotes, threshold=0.3):
 
 
 # ══════════════════════════════════════════════════════════════
-# MARKET DATA — FINNHUB
+# MARKET DATA — FINNHUB + SPOT ASSET FIXES
 # ══════════════════════════════════════════════════════════════
+
+def fetch_bitcoin_spot_price():
+    """Fetch the actual BTC-USD spot price from public crypto endpoints.
+
+    Important: IBIT is an ETF and its share price is NOT the Bitcoin price.
+    This function gives the model and deterministic guards an actual BTC spot level,
+    so the review cannot accidentally write "Bitcoin around $36" from the IBIT ETF quote.
+    """
+    global _LAST_SPOT_DATA
+
+    # First preference: CoinGecko also provides a 24h change. No API key required for light usage.
+    try:
+        r = requests.get(
+            "https://api.coingecko.com/api/v3/simple/price",
+            params={
+                "ids": "bitcoin",
+                "vs_currencies": "usd",
+                "include_24hr_change": "true",
+            },
+            timeout=8,
+        )
+        if r.ok:
+            d = r.json().get("bitcoin", {})
+            price = float(d.get("usd") or 0)
+            pct = d.get("usd_24h_change")
+            pct = float(pct) if pct is not None else None
+            if price > 1000:
+                _LAST_SPOT_DATA["BTC_USD"] = {"price": price, "pct": pct, "source": "CoinGecko"}
+                pct_txt = f", 24h: {pct:+.2f}%" if pct is not None else ""
+                print(f"  BTC spot: ${price:,.0f}{pct_txt} (CoinGecko)")
+                return _LAST_SPOT_DATA["BTC_USD"]
+    except Exception as e:
+        print(f"  BTC spot CoinGecko error: {e}")
+
+    # Fallback: Coinbase spot endpoint. Gives price only, but is usually very stable.
+    try:
+        r = requests.get("https://api.coinbase.com/v2/prices/BTC-USD/spot", timeout=8)
+        if r.ok:
+            d = r.json().get("data", {})
+            price = float(d.get("amount") or 0)
+            if price > 1000:
+                _LAST_SPOT_DATA["BTC_USD"] = {"price": price, "pct": None, "source": "Coinbase"}
+                print(f"  BTC spot: ${price:,.0f} (Coinbase)")
+                return _LAST_SPOT_DATA["BTC_USD"]
+    except Exception as e:
+        print(f"  BTC spot Coinbase error: {e}")
+
+    print("  BTC spot unavailable — will rely on prompt/search safeguards")
+    return None
+
 
 def fetch_market_data(weekly=False):
     """Fetch verified market data from Finnhub API.
@@ -486,7 +537,7 @@ def fetch_market_data(weekly=False):
         "GLD": "Gold (GLD ETF)",
         "SLV": "Silver (SLV ETF)",
         # Crypto
-        "IBIT": "Bitcoin (IBIT ETF)",
+        "IBIT": "Bitcoin direction proxy (IBIT ETF share price — NOT BTC spot)",
         # Bonds
         "TLT": "US 20Y+ Bonds (TLT ETF)",
         # Dollar
@@ -514,7 +565,10 @@ def fetch_market_data(weekly=False):
                     etf_prices[symbol] = price
                     etf_pcts[symbol] = pct
                     direction = "+" if pct >= 0 else ""
-                    lines.append(f"  {label}: ${price:.2f} (daily: {direction}{pct:.2f}%), prev close: ${prev:.2f}")
+                    if symbol == "IBIT":
+                        lines.append(f"  Bitcoin direction proxy (IBIT ETF; NOT BTC spot): daily {direction}{pct:.2f}%. Do NOT use the IBIT share price as Bitcoin's dollar price.")
+                    else:
+                        lines.append(f"  {label}: ${price:.2f} (daily: {direction}{pct:.2f}%), prev close: ${prev:.2f}")
                     print(f"  Finnhub {symbol}: ${price:.2f} ({direction}{pct:.2f}%)")
         except Exception as e:
             print(f"  Finnhub error for {symbol}: {e}")
@@ -566,7 +620,10 @@ def fetch_market_data(weekly=False):
                                 prev_friday_close = all_before[-1]
                                 weekly_pct = ((week_close - prev_friday_close) / prev_friday_close) * 100
                                 direction = "+" if weekly_pct >= 0 else ""
-                                weekly_lines.append(f"  {label}: weekly {direction}{weekly_pct:.2f}% (from ${prev_friday_close:.2f} to ${week_close:.2f})")
+                                if symbol == "IBIT":
+                                    weekly_lines.append(f"  Bitcoin direction proxy (IBIT ETF; NOT BTC spot): weekly {direction}{weekly_pct:.2f}%. Do NOT use ETF share prices as Bitcoin's dollar price.")
+                                else:
+                                    weekly_lines.append(f"  {label}: weekly {direction}{weekly_pct:.2f}% (from ${prev_friday_close:.2f} to ${week_close:.2f})")
                                 print(f"  Finnhub {symbol} WEEKLY: {direction}{weekly_pct:.2f}%")
             except Exception as e:
                 print(f"  Finnhub weekly error for {symbol}: {e}")
@@ -574,8 +631,14 @@ def fetch_market_data(weekly=False):
     if not lines:
         return ""
 
+    btc_spot = fetch_bitcoin_spot_price()
+    if btc_spot:
+        pct = btc_spot.get("pct")
+        pct_txt = f" (24h: {pct:+.2f}%)" if pct is not None else ""
+        lines.append(f"  Bitcoin spot (BTC-USD): ${btc_spot['price']:,.0f}{pct_txt}. This is the ONLY valid absolute dollar price for Bitcoin in the review.")
+
     result_lines = [
-        "\n══ VERIFIED MARKET DATA (from Finnhub API — these are FACTS, do NOT override with guesses) ══",
+        "\n══ VERIFIED MARKET DATA (from Finnhub API + public crypto spot endpoints — these are FACTS, do NOT override with guesses) ══",
         "DAILY PERFORMANCE:",
         *lines,
     ]
@@ -593,7 +656,8 @@ def fetch_market_data(weekly=False):
     result_lines.extend([
         "",
         "The % changes above are ACCURATE — use them for direction and magnitude.",
-        "For exact index LEVELS (points), gold price ($/oz), oil price ($/barrel), VIX level, and Bitcoin price: ALWAYS use Google Search. Do NOT calculate or estimate them from ETF prices.",
+        "For exact index LEVELS (points), gold price ($/oz), oil price ($/barrel), and VIX level: use Google Search. Do NOT calculate or estimate them from ETF prices.",
+        "For Bitcoin absolute price: use ONLY the 'Bitcoin spot (BTC-USD)' line above when available. NEVER use IBIT's ETF share price as the Bitcoin price.",
         "For sector performance (XLE/XLK/XLF/XLY/XLV/XLI/XLP/XLU): USE ONLY the Finnhub numbers above. Do NOT invent sector percentages.",
         "For 10-year Treasury yield: use Google Search to verify the current level — do NOT estimate from TLT price.",
         "If ANY percentage you write contradicts the data above, you are WRONG. Fix it.",
@@ -1931,6 +1995,69 @@ Return ONLY the JSON object."""
 
 
 # ══════════════════════════════════════════════════════════════
+# ABSOLUTE PRICE SANITY GUARD
+# ══════════════════════════════════════════════════════════════
+
+def apply_absolute_price_sanity_guard(result):
+    """Fix embarrassing absolute-price errors that direction guards cannot catch.
+
+    Example: IBIT can trade around $30-$70 while Bitcoin trades in the tens of thousands.
+    If a Hebrew bullet says Bitcoin is around a two-digit dollar value, this guard rewrites
+    that number to the verified BTC spot price when available, or removes the exact price.
+    """
+    if not isinstance(result, dict):
+        return result
+
+    btc = _LAST_SPOT_DATA.get("BTC_USD") or {}
+    btc_price = btc.get("price")
+    btc_price_txt = f"{btc_price:,.0f}" if isinstance(btc_price, (int, float)) and btc_price > 1000 else None
+
+    def fix_text(text):
+        if not isinstance(text, str):
+            return text
+        out_lines = []
+        changed = False
+        for line in text.split("\n"):
+            low = line.lower()
+            mentions_btc = any(term in low for term in ["ביטקוין", "bitcoin", "btc"])
+            mentions_ibit = "ibit" in low
+            if mentions_btc and not mentions_ibit:
+                def repl(m):
+                    nonlocal changed
+                    raw = m.group(1)
+                    try:
+                        val = float(raw.replace(",", ""))
+                    except Exception:
+                        return m.group(0)
+                    # BTC spot should not be a one/two/three digit USD price.
+                    if val < 1000:
+                        changed = True
+                        if btc_price_txt:
+                            return btc_price_txt
+                        return ""
+                    return m.group(0)
+                fixed = re.sub(r'(?<!\d)(\d{1,3}(?:,\d{3})*|\d{1,3}(?:\.\d+)?)(?=\s*(?:דולר|USD|\$))', repl, line)
+                if fixed != line:
+                    print("  ✅ Absolute price guard fixed invalid BTC dollar price")
+                line = fixed
+            out_lines.append(line)
+        return "\n".join(out_lines) if changed else text
+
+    for section in result.get("sections", []):
+        content = section.get("content")
+        if isinstance(content, str):
+            section["content"] = fix_text(content)
+        elif isinstance(content, list):
+            section["content"] = [fix_text(x) if isinstance(x, str) else x for x in content]
+    for item in result.get("items", []):
+        if isinstance(item.get("description"), str):
+            item["description"] = fix_text(item["description"])
+        if isinstance(item.get("title"), str):
+            item["title"] = fix_text(item["title"])
+    return result
+
+
+# ══════════════════════════════════════════════════════════════
 # FACT-CHECKER
 # ══════════════════════════════════════════════════════════════
 
@@ -1987,6 +2114,7 @@ YOUR TASK:
 - Fix any factual error (wrong company attribution, wrong political titles, wrong dates, wrong terminology).
 - For sector ETF percentages (XLE/XLK/XLF/XLY/XLV/XLI): if a specific sector number appears in the review that does NOT match the Finnhub data, REMOVE that claim or replace it with a number from the Finnhub data.
 - For 10-year Treasury yield, commodity absolute prices ($/barrel, $/oz), and DXY level: these are NOT in Finnhub. Only keep them if they are clearly reasonable; otherwise remove.
+- For Bitcoin: NEVER treat IBIT ETF share price as the Bitcoin spot price. If Bitcoin is described as a two-digit or three-digit dollar price, fix it using the verified Bitcoin spot line above, or remove the exact price if no spot line exists.
 - DO NOT change the writing style, structure, section count, or section headings.
 - DO NOT remove content — only fix errors or remove clearly-hallucinated numbers.
 - EXCEPTION: if PROVENANCE WARNINGS above flag a number you cannot verify, remove the entire bullet containing it (see provenance instructions above).
@@ -2224,8 +2352,12 @@ def main():
                                      provenance_warnings=provenance_warnings,
                                      ticker_warnings=ticker_warnings)
 
-    # Layer 4b: Deterministic market-direction guard — fixes words like צונח/מזנק if they contradict Finnhub data
-    print("\n── Layer 4b: Market direction guard ──")
+    # Layer 4b: Deterministic absolute-price sanity guard — catches IBIT-as-BTC and similar errors
+    print("\n── Layer 4b: Absolute price sanity guard ──")
+    result = apply_absolute_price_sanity_guard(result)
+
+    # Layer 4c: Deterministic market-direction guard — fixes words like צונח/מזנק if they contradict Finnhub data
+    print("\n── Layer 4c: Market direction guard ──")
     result = apply_market_direction_guard(result, REVIEW_TYPE)
 
     # Layer 5: Re-enforce structure (defensive — fact-checker sometimes alters section headings)
