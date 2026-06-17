@@ -764,30 +764,64 @@ def get_prev_week_range_str(now):
 # ══════════════════════════════════════════════════════════════
 
 def fetch_tweets():
+    """Fetch recent tweets from TwitterAPI.io.
+
+    Important: TwitterAPI.io currently returns tweets at the top level:
+        {"tweets": [...], "status": "success", ...}
+    Older/internal wrappers sometimes returned:
+        {"data": {"tweets": [...]}}
+
+    The previous code only handled the nested shape, so every successful API
+    response was parsed as zero tweets. That made the script exit early without
+    writing data.json, producing the misleading GitHub Actions message:
+    "No changes to commit".
+    """
     all_t = []
     for acc in ACCOUNTS:
         try:
             r = requests.get(
-                f"https://api.twitterapi.io/twitter/user/last_tweets?userName={acc}",
-                headers={"X-API-Key": TWITTER_API_KEY}
+                "https://api.twitterapi.io/twitter/user/last_tweets",
+                headers={"X-API-Key": TWITTER_API_KEY},
+                params={"userName": acc, "includeReplies": "false"},
+                timeout=20,
             )
             print(f"  @{acc}: status={r.status_code}")
             if r.ok:
                 data = r.json()
-                tweets = data.get("data", {}).get("tweets", [])
+
+                # Current documented response shape: top-level "tweets".
+                tweets = data.get("tweets")
+
+                # Backward compatibility with older/nested response shape.
+                if tweets is None:
+                    tweets = data.get("data", {}).get("tweets", [])
+
+                if not isinstance(tweets, list):
+                    print(f"    -> Unexpected tweets payload type: {type(tweets).__name__}")
+                    tweets = []
+
                 print(f"    -> {len(tweets)} tweets")
                 for t in tweets[:10]:
-                    text = t.get('text', '')
+                    if not isinstance(t, dict):
+                        continue
+                    tweet_text = t.get('text', '')
+                    if not tweet_text:
+                        continue
                     # Include timestamp if available — critical for live_news 2-hour window
                     ts = t.get('createdAt') or t.get('created_at') or t.get('date') or ''
                     if ts:
-                        all_t.append(f"@{acc} [{ts}]: {text}")
+                        all_t.append(f"@{acc} [{ts}]: {tweet_text}")
                     else:
-                        all_t.append(f"@{acc}: {text}")
+                        all_t.append(f"@{acc}: {tweet_text}")
             else:
-                print(f"    -> Error: {r.text[:200]}")
+                print(f"    -> Error: {r.text[:500]}")
         except Exception as e:
             print(f"  Error fetching {acc}: {e}")
+
+    if not all_t:
+        print("  ERROR: TwitterAPI.io returned zero usable tweets from all configured accounts.")
+        print("  Check TWITTER_API_KEY, credits/quota, endpoint response shape, or account names.")
+
     return "\n\n".join(all_t)
 
 # ══════════════════════════════════════════════════════════════
@@ -2133,8 +2167,7 @@ def main():
 
     tweets = fetch_tweets()
     if not tweets:
-        print("No tweets fetched, skipping.")
-        return
+        raise RuntimeError("No tweets fetched. Refusing to leave data.json unchanged with a green workflow run.")
 
     print(f"Fetched {len(tweets.split(chr(10)+chr(10)))} tweet blocks")
 
