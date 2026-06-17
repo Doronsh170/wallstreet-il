@@ -16,16 +16,10 @@ on:
           - events
           - live_news
   schedule:
-    # Times are UTC. Israel time is usually UTC+2/UTC+3, so keep the Python script responsible for titles/date logic.
-    # Daily prep: 13:30 Israel is usually 10:30 UTC during DST.
     - cron: '30 10 * * 1-5'
-    # Daily summary: 23:30 Israel is usually 20:30 UTC during DST.
     - cron: '30 20 * * 1-5'
-    # Weekly prep: Sunday 13:00 Israel.
     - cron: '00 10 * * 0'
-    # Weekly summary: Saturday 01:00 Israel is Friday 22:00 UTC during DST.
     - cron: '00 22 * * 5'
-    # Live news snapshot during US market hours, optional. Adjust/remove if quota is an issue.
     - cron: '00 14,16,18,20 * * 1-5'
 
 concurrency:
@@ -73,6 +67,39 @@ jobs:
             echo "type=live_news" >> $GITHUB_OUTPUT
           fi
 
+      - name: Debug before update
+        shell: bash
+        run: |
+          echo "Review type: ${{ steps.type.outputs.type }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Working directory: $(pwd)"
+          echo "Files at root:"
+          ls -la
+          echo "Scripts folder:"
+          ls -la scripts || true
+          echo "Workflow file exists:"
+          ls -la .github/workflows || true
+          echo "First lines of scripts/update_data.py:"
+          head -40 scripts/update_data.py || true
+          echo "Current data.json status:"
+          python - <<'PY'
+          import json
+          try:
+              with open('data.json', encoding='utf-8') as f:
+                  d=json.load(f)
+              print('lastUpdated:', d.get('lastUpdated'))
+              print('dailyPrep.date:', d.get('dailyPrep',{}).get('date'))
+              print('dailySummary.date:', d.get('dailySummary',{}).get('date'))
+              print('weeklyPrep.date:', d.get('weeklyPrep',{}).get('date'))
+              print('weeklySummary.date:', d.get('weeklySummary',{}).get('date'))
+              print('liveNews.date:', d.get('liveNews',{}).get('date'))
+          except Exception as e:
+              print('Cannot read data.json as JSON:', repr(e))
+              raise
+          PY
+          cp data.json /tmp/data.before.json
+          sha256sum data.json /tmp/data.before.json
+
       - name: Run update script
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -81,13 +108,55 @@ jobs:
           REVIEW_TYPE: ${{ steps.type.outputs.type }}
         run: python scripts/update_data.py
 
+      - name: Verify update result
+        shell: bash
+        run: |
+          echo "After update data.json status:"
+          sha256sum data.json /tmp/data.before.json
+          python - <<'PY'
+          import json, os
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+
+          review_type='${{ steps.type.outputs.type }}'
+          key_map={
+              'daily_prep':'dailyPrep',
+              'daily_summary':'dailySummary',
+              'weekly_prep':'weeklyPrep',
+              'weekly_summary':'weeklySummary',
+              'events':'events',
+              'live_news':'liveNews',
+          }
+          with open('data.json', encoding='utf-8') as f:
+              d=json.load(f)
+          print('lastUpdated:', d.get('lastUpdated'))
+          for k in ['dailyPrep','dailySummary','weeklyPrep','weeklySummary','liveNews']:
+              print(f'{k}.date:', d.get(k,{}).get('date'))
+          if review_type in key_map:
+              section=d.get(key_map[review_type], {})
+              print('selected section:', key_map[review_type])
+              print('selected title:', section.get('title'))
+              print('selected date:', section.get('date') or section.get('lastUpdated'))
+          before=open('/tmp/data.before.json','rb').read()
+          after=open('data.json','rb').read()
+          if before == after:
+              raise SystemExit('ERROR: update_data.py finished, but data.json is byte-for-byte unchanged. The script did not update the site data.')
+          PY
+
       - name: Commit and push changes
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data.json
-          git diff --staged --quiet && echo "No changes to commit" && exit 0
+          echo "Git status after git add:"
+          git status --short
+          echo "Data diff preview:"
+          git diff --staged -- data.json | head -200 || true
+          if git diff --staged --quiet; then
+            echo "::error::No changes to commit. data.json did not change, so GitHub Pages will keep showing the old review."
+            exit 1
+          fi
           git commit -m "Update ${{ steps.type.outputs.type }} - $(date -u +%Y-%m-%dT%H:%M:%S)"
           git pull --rebase origin main || { echo "Rebase conflict — data already updated by another run, skipping."; git rebase --abort; exit 0; }
           git push
