@@ -7,10 +7,7 @@ except ImportError:
 
 # Use real Israel timezone, including daylight-saving changes.
 ISR_TZ = ZoneInfo("Asia/Jerusalem") if ZoneInfo else timezone(timedelta(hours=3))
-OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
-OPENAI_MODEL = os.environ.get("OPENAI_MODEL") or "gpt-4.1"
-OPENAI_FAST_MODEL = os.environ.get("OPENAI_FAST_MODEL") or "gpt-4.1-mini"
-OPENAI_ENABLE_WEB_SEARCH = os.environ.get("OPENAI_ENABLE_WEB_SEARCH", "1") == "1"
+GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 TWITTER_API_KEY = os.environ["TWITTER_API_KEY"]
 FINNHUB_API_KEY = os.environ.get("FINNHUB_API_KEY", "")
 REVIEW_TYPE = os.environ.get("REVIEW_TYPE", "daily_prep")
@@ -22,7 +19,7 @@ PY_TO_HEB = {0: "שני", 1: "שלישי", 2: "רביעי", 3: "חמישי", 4: 
 # ══════════════════════════════════════════════════════════════
 # ACTIVE GEOPOLITICAL CONTEXT — edit this manually when reality changes.
 # Set to "" (empty string) to disable. The block is injected into every
-# prompt so the model stops softening "war" into "tensions".
+# prompt so Gemini stops softening "war" into "tensions".
 # Last edited: 2026-05-05
 # ══════════════════════════════════════════════════════════════
 ACTIVE_GEOPOLITICAL_CONTEXT = """
@@ -53,7 +50,7 @@ EXPECTED_FIRST_HEADING = {
 
 def build_expected_title(review_type, title_day_name, title_date_str, week_range=None, now_time=None):
     """Build the exact title string we expect the output to have.
-    This is enforced post-hoc in enforce_structure(), overriding whatever the model returned."""
+    This is enforced post-hoc in enforce_structure(), overriding whatever Gemini returned."""
     if review_type == "daily_prep":
         return f"נקודות חשובות לקראת פתיחת המסחר בוול סטריט 🇺🇸 – יום {title_day_name} {title_date_str}"
     elif review_type == "daily_summary":
@@ -67,31 +64,6 @@ def build_expected_title(review_type, title_day_name, title_date_str, week_range
     return ""
 
 _LAST_MARKET_DATA = {"prices": {}, "pcts": {}}
-_LAST_SPOT_DATA = {}
-
-# ETF proxies are useful for direction, but their share prices are NOT the
-# underlying asset price. These sets drive both prompt formatting and final
-# publication guards.
-INDEX_PROXY_SYMBOLS = {"SPY", "QQQ", "DIA", "IWM"}
-SECTOR_ETF_SYMBOLS = {"XLE", "XLK", "XLF", "XLY", "XLV", "XLI", "XLP", "XLU"}
-COMMODITY_PROXY_SYMBOLS = {"USO", "BNO", "GLD", "SLV"}
-CRYPTO_PROXY_SYMBOLS = {"IBIT"}
-RATE_DOLLAR_VOL_PROXY_SYMBOLS = {"TLT", "UUP", "VIXY"}
-
-PROXY_PUBLICATION_NAMES = {
-    "SPY": "S&P 500 ETF proxy — NOT S&P futures or index level",
-    "QQQ": "Nasdaq 100 ETF proxy — NOT Nasdaq futures or index level",
-    "DIA": "Dow Jones ETF proxy — NOT Dow futures or index level",
-    "IWM": "Russell 2000 ETF proxy — NOT Russell futures or index level",
-    "USO": "WTI oil ETF proxy — NOT WTI $/barrel",
-    "BNO": "Brent oil ETF proxy — NOT Brent $/barrel",
-    "GLD": "Gold ETF proxy — NOT gold $/oz",
-    "SLV": "Silver ETF proxy — NOT silver $/oz",
-    "IBIT": "Bitcoin ETF proxy — NOT BTC spot price",
-    "TLT": "Long-bond ETF proxy — NOT Treasury yield",
-    "UUP": "Dollar ETF proxy — NOT DXY level",
-    "VIXY": "VIX ETF proxy — NOT VIX index level",
-}
 
 
 # Deterministic market-direction layer.
@@ -480,58 +452,8 @@ def apply_ticker_direction_guard(result, ticker_quotes, threshold=0.3):
 
 
 # ══════════════════════════════════════════════════════════════
-# MARKET DATA — FINNHUB + SPOT ASSET FIXES
+# MARKET DATA — FINNHUB
 # ══════════════════════════════════════════════════════════════
-
-def fetch_bitcoin_spot_price():
-    """Fetch the actual BTC-USD spot price from public crypto endpoints.
-
-    Important: IBIT is an ETF and its share price is NOT the Bitcoin price.
-    This function gives the model and deterministic guards an actual BTC spot level,
-    so the review cannot accidentally write "Bitcoin around $36" from the IBIT ETF quote.
-    """
-    global _LAST_SPOT_DATA
-
-    # First preference: CoinGecko also provides a 24h change. No API key required for light usage.
-    try:
-        r = requests.get(
-            "https://api.coingecko.com/api/v3/simple/price",
-            params={
-                "ids": "bitcoin",
-                "vs_currencies": "usd",
-                "include_24hr_change": "true",
-            },
-            timeout=8,
-        )
-        if r.ok:
-            d = r.json().get("bitcoin", {})
-            price = float(d.get("usd") or 0)
-            pct = d.get("usd_24h_change")
-            pct = float(pct) if pct is not None else None
-            if price > 1000:
-                _LAST_SPOT_DATA["BTC_USD"] = {"price": price, "pct": pct, "source": "CoinGecko"}
-                pct_txt = f", 24h: {pct:+.2f}%" if pct is not None else ""
-                print(f"  BTC spot: ${price:,.0f}{pct_txt} (CoinGecko)")
-                return _LAST_SPOT_DATA["BTC_USD"]
-    except Exception as e:
-        print(f"  BTC spot CoinGecko error: {e}")
-
-    # Fallback: Coinbase spot endpoint. Gives price only, but is usually very stable.
-    try:
-        r = requests.get("https://api.coinbase.com/v2/prices/BTC-USD/spot", timeout=8)
-        if r.ok:
-            d = r.json().get("data", {})
-            price = float(d.get("amount") or 0)
-            if price > 1000:
-                _LAST_SPOT_DATA["BTC_USD"] = {"price": price, "pct": None, "source": "Coinbase"}
-                print(f"  BTC spot: ${price:,.0f} (Coinbase)")
-                return _LAST_SPOT_DATA["BTC_USD"]
-    except Exception as e:
-        print(f"  BTC spot Coinbase error: {e}")
-
-    print("  BTC spot unavailable — will rely on prompt/search safeguards")
-    return None
-
 
 def fetch_market_data(weekly=False):
     """Fetch verified market data from Finnhub API.
@@ -561,7 +483,7 @@ def fetch_market_data(weekly=False):
         "GLD": "Gold (GLD ETF)",
         "SLV": "Silver (SLV ETF)",
         # Crypto
-        "IBIT": "Bitcoin direction proxy (IBIT ETF share price — NOT BTC spot)",
+        "IBIT": "Bitcoin (IBIT ETF)",
         # Bonds
         "TLT": "US 20Y+ Bonds (TLT ETF)",
         # Dollar
@@ -586,41 +508,11 @@ def fetch_market_data(weekly=False):
                 pct = d.get("dp", 0)
                 prev = d.get("pc", 0)
                 if price > 0:
-                    # Store share prices internally for sanity guards, but do NOT expose
-                    # ETF share prices to the model. Exposing USO/GLD/IBIT prices caused
-                    # the model to publish them as WTI/gold/BTC spot prices.
                     etf_prices[symbol] = price
                     etf_pcts[symbol] = pct
                     direction = "+" if pct >= 0 else ""
-
-                    if symbol in INDEX_PROXY_SYMBOLS:
-                        lines.append(
-                            f"  {PROXY_PUBLICATION_NAMES.get(symbol, label)}: daily {direction}{pct:.2f}% on the ETF/proxy instrument only. "
-                            f"Use ONLY as broad risk-direction context. NEVER write this as futures %, index %, or index points."
-                        )
-                    elif symbol in SECTOR_ETF_SYMBOLS:
-                        lines.append(
-                            f"  {label}: daily {direction}{pct:.2f}% on the sector ETF. This % may be used ONLY as sector ETF performance."
-                        )
-                    elif symbol in COMMODITY_PROXY_SYMBOLS:
-                        lines.append(
-                            f"  {PROXY_PUBLICATION_NAMES.get(symbol, label)}: daily {direction}{pct:.2f}% on the ETF/proxy instrument only. "
-                            f"Use ONLY for direction. NEVER publish the ETF share price as commodity spot/futures price."
-                        )
-                    elif symbol in CRYPTO_PROXY_SYMBOLS:
-                        lines.append(
-                            f"  {PROXY_PUBLICATION_NAMES.get(symbol, label)}: daily {direction}{pct:.2f}% on the ETF/proxy instrument only. "
-                            f"Use ONLY for direction. NEVER use this ETF as Bitcoin's dollar price."
-                        )
-                    elif symbol in RATE_DOLLAR_VOL_PROXY_SYMBOLS:
-                        lines.append(
-                            f"  {PROXY_PUBLICATION_NAMES.get(symbol, label)}: daily {direction}{pct:.2f}% on the ETF/proxy instrument only. "
-                            f"Use ONLY for direction. NEVER publish the ETF share price as yield, DXY, or VIX level."
-                        )
-                    else:
-                        lines.append(f"  {label}: daily {direction}{pct:.2f}% on the listed security.")
-
-                    print(f"  Finnhub {symbol}: ${price:.2f} ({direction}{pct:.2f}%) [price hidden from prompt when proxy]")
+                    lines.append(f"  {label}: ${price:.2f} (daily: {direction}{pct:.2f}%), prev close: ${prev:.2f}")
+                    print(f"  Finnhub {symbol}: ${price:.2f} ({direction}{pct:.2f}%)")
         except Exception as e:
             print(f"  Finnhub error for {symbol}: {e}")
 
@@ -671,33 +563,16 @@ def fetch_market_data(weekly=False):
                                 prev_friday_close = all_before[-1]
                                 weekly_pct = ((week_close - prev_friday_close) / prev_friday_close) * 100
                                 direction = "+" if weekly_pct >= 0 else ""
-                                if symbol in INDEX_PROXY_SYMBOLS:
-                                    weekly_lines.append(
-                                        f"  {PROXY_PUBLICATION_NAMES.get(symbol, label)}: weekly {direction}{weekly_pct:.2f}% on the ETF/proxy instrument only. NEVER write this as futures %, index %, or index points."
-                                    )
-                                elif symbol in SECTOR_ETF_SYMBOLS:
-                                    weekly_lines.append(f"  {label}: weekly {direction}{weekly_pct:.2f}% on the sector ETF.")
-                                elif symbol in COMMODITY_PROXY_SYMBOLS or symbol in CRYPTO_PROXY_SYMBOLS or symbol in RATE_DOLLAR_VOL_PROXY_SYMBOLS:
-                                    weekly_lines.append(
-                                        f"  {PROXY_PUBLICATION_NAMES.get(symbol, label)}: weekly {direction}{weekly_pct:.2f}% on the ETF/proxy instrument only. Use only for direction, not absolute price/level."
-                                    )
-                                else:
-                                    weekly_lines.append(f"  {label}: weekly {direction}{weekly_pct:.2f}% on the listed security.")
-                                print(f"  Finnhub {symbol} WEEKLY: {direction}{weekly_pct:.2f}% [levels hidden from prompt when proxy]")
+                                weekly_lines.append(f"  {label}: weekly {direction}{weekly_pct:.2f}% (from ${prev_friday_close:.2f} to ${week_close:.2f})")
+                                print(f"  Finnhub {symbol} WEEKLY: {direction}{weekly_pct:.2f}%")
             except Exception as e:
                 print(f"  Finnhub weekly error for {symbol}: {e}")
 
     if not lines:
         return ""
 
-    btc_spot = fetch_bitcoin_spot_price()
-    if btc_spot:
-        pct = btc_spot.get("pct")
-        pct_txt = f" (24h: {pct:+.2f}%)" if pct is not None else ""
-        lines.append(f"  Bitcoin spot (BTC-USD): ${btc_spot['price']:,.0f}{pct_txt}. This is the ONLY valid absolute dollar price for Bitcoin in the review.")
-
     result_lines = [
-        "\n══ VERIFIED MARKET DATA (from Finnhub API + public crypto spot endpoints — these are FACTS, do NOT override with guesses) ══",
+        "\n══ VERIFIED MARKET DATA (from Finnhub API — these are FACTS, do NOT override with guesses) ══",
         "DAILY PERFORMANCE:",
         *lines,
     ]
@@ -714,14 +589,11 @@ def fetch_market_data(weekly=False):
 
     result_lines.extend([
         "",
-        "PUBLICATION RULES FOR THE DATA ABOVE:",
-        "- ETF/proxy percentages above are valid ONLY for the proxy instrument's direction/magnitude, not for underlying futures, index levels, commodity prices, crypto spot, DXY, VIX, or Treasury yields.",
-        "- NEVER write SPY/QQQ/DIA/IWM percentages as futures percentages. If you need futures %, verify via Google Search or omit exact %. If not verified, write only a directional sentence.",
-        "- NEVER publish USO/BNO/GLD/SLV/IBIT/TLT/UUP/VIXY share prices as WTI, Brent, gold, silver, Bitcoin, yield, DXY, or VIX levels. Those share prices are intentionally hidden from this prompt.",
-        "- For exact index LEVELS (points), gold price ($/oz), oil price ($/barrel), VIX level, DXY, and Treasury yields: use Google Search. Do NOT calculate or estimate them from ETF prices.",
-        "- For Bitcoin absolute price: use ONLY the 'Bitcoin spot (BTC-USD)' line above when available. NEVER use IBIT's ETF share price as the Bitcoin price.",
-        "- For sector performance (XLE/XLK/XLF/XLY/XLV/XLI/XLP/XLU): USE ONLY the sector ETF percentages above. Do NOT invent sector percentages.",
-        "- If you cannot verify an absolute price/level from an appropriate source, omit the number and keep only the direction.",
+        "The % changes above are ACCURATE — use them for direction and magnitude.",
+        "For exact index LEVELS (points), gold price ($/oz), oil price ($/barrel), VIX level, and Bitcoin price: ALWAYS use Google Search. Do NOT calculate or estimate them from ETF prices.",
+        "For sector performance (XLE/XLK/XLF/XLY/XLV/XLI/XLP/XLU): USE ONLY the Finnhub numbers above. Do NOT invent sector percentages.",
+        "For 10-year Treasury yield: use Google Search to verify the current level — do NOT estimate from TLT price.",
+        "If ANY percentage you write contradicts the data above, you are WRONG. Fix it.",
         "══════════════════════════════════════════════════════════════════════════════════════════\n"
     ])
 
@@ -923,7 +795,7 @@ def fetch_tweets():
 # ══════════════════════════════════════════════════════════════
 
 def get_prior_review_context(review_type, data):
-    """Inject yesterday's/last week's review so the model does not repeat the same news.
+    """Inject yesterday's/last week's review so Gemini doesn't repeat the same news.
     This is the fix for: 'daily_prep keeps summarizing what was already in daily_summary'."""
     if review_type == "daily_prep":
         prior = data.get("dailySummary")
@@ -990,18 +862,9 @@ SHARED_RULES = (ACTIVE_GEOPOLITICAL_CONTEXT + "\n" if ACTIVE_GEOPOLITICAL_CONTEX
 - Start each section directly with the key fact. No generic opening sentences.
 - Output pure JSON only, no backticks, no explanations.
 
-CRITICAL — NO CITATIONS OR LINKS INSIDE OUTPUT:
-- The website pages are clean Hebrew market briefs, not research footnotes.
-- NEVER write markdown links such as [source](https://...).
-- NEVER write raw URLs, domains, utm_source=openai, footnote markers like [1], or citation parentheses at the end of bullets.
-- Do NOT attach a source name to a claim unless that exact source directly supports the whole bullet.
-- Prefer no source attribution inside bullets. If attribution is essential, use plain text only, e.g. "לפי Reuters", and only when the source directly supports the claim.
-- A citation attached to the wrong claim is worse than no citation.
-
 CRITICAL — KEY MARKET DATA (MANDATORY VERIFICATION):
-- If VERIFIED MARKET DATA from Finnhub API is provided above the tweets, read each label literally. Most index/commodity/crypto entries are ETF PROXIES, not underlying futures or spot prices.
-- SPY/QQQ/DIA/IWM percentages are ETF proxy percentages only. NEVER write them as futures %, index %, or index-point levels. For futures %, verify via Google Search or omit exact %.
-- Use verified sector ETF percentages as sector ETF performance only. For exact index point levels, gold price, oil price, VIX level, DXY, and yields: ALWAYS use Google Search. Do NOT calculate them from ETF prices.
+- If VERIFIED MARKET DATA from Finnhub API is provided above the tweets, you MUST use those numbers for index performance (% change). Do NOT override them with numbers from tweets or from memory.
+- Use the verified % changes as-is. For exact index point levels, gold price, oil price, and VIX level: ALWAYS use Google Search. Do NOT calculate them from ETF prices.
 - You MUST verify via Google Search the current prices of: Brent crude oil, WTI crude oil, gold, and any other commodity you mention.
 - If a tweet states a price that seems extreme or unusual, you MUST verify it via Google Search before including it.
 - NEVER trust a single tweet for major price data. Always cross-reference.
@@ -1026,7 +889,7 @@ CRITICAL — DATA ACCURACY:
 - NEVER invent, estimate, or recall prices from memory. If you cannot point to a source, do NOT include the number.
 - For the 10-year Treasury yield: verify via Google Search. Do NOT estimate from TLT.
 - For commodity absolute prices (oil $/barrel, gold $/oz): verify via Google Search — do NOT estimate from ETF prices.
-- If a number from a tweet contradicts appropriate verified market data, the verified data is correct — the tweet is wrong. But ETF proxy data must not be transformed into underlying futures/spot/level data.
+- If a number from a tweet contradicts the Finnhub verified data, the Finnhub data is correct — the tweet is wrong.
 - Getting a number wrong destroys credibility. When in doubt, omit.
 
 CRITICAL — CONSISTENCY:
@@ -1041,7 +904,7 @@ CRITICAL — FINANCIAL TERMINOLOGY:
 - NASDAQ INDICES — there are TWO different indices, do NOT confuse them:
   * נאסד"ק 100 (Nasdaq 100 / NDX) — 100 החברות הגדולות בבורסת נאסד"ק (ללא פיננסיים). QQQ עוקב אחרי מדד זה. רמה בסביבות 25,000-26,000 נקודות.
   * נאסד"ק קומפוזיט (Nasdaq Composite / IXIC) — כל החברות בבורסת נאסד"ק. רמה בסביבות 23,000-24,000 נקודות.
-  * QQQ tracks Nasdaq 100 but is still an ETF proxy. When reporting QQQ %, label it as QQQ/Nasdaq-100 ETF proxy performance, NOT Nasdaq futures or the official index move.
+  * The Finnhub data uses QQQ which tracks the Nasdaq 100. When reporting QQQ % change, label it as "נאסד"ק 100" or "Nasdaq 100".
   * If you report an index LEVEL (points), verify via Google Search which index the number belongs to. A level of ~24,000 is the Composite, not the 100. A level of ~25,500 is the 100, not the Composite.
   * NEVER mix them — do not write "נאסד"ק 100" and then give the Composite level.
 
@@ -1057,9 +920,7 @@ CRITICAL — CURRENT POLITICAL LEADERS:
 CRITICAL — US-ISRAEL TIME CONVERSION:
 - US market opens at 9:30 AM ET, closes at 4:00 PM ET.
 - To convert US Eastern Time to Israel time, use the offset provided below.
-- NEVER guess the time offset — use ONLY the value calculated for today.
-- Do NOT confuse 9:30 ET market open with 8:30 ET macro releases. Empire State Manufacturing is normally 8:30 ET. Industrial Production and Capacity Utilization are normally 9:15 ET. In Israel daylight-saving time this is usually 15:30 and 16:15, while market open is 16:30.
-- If several macro events occur at different ET times, DO NOT put all of them at 9:30 ET or 16:30 Israel time."""
+- NEVER guess the time offset — use ONLY the value calculated for today."""
 
 def get_us_israel_offset(now):
     year = now.year
@@ -1091,9 +952,8 @@ def get_time_conversion_block(now):
     return f"""
 US-ISRAEL TIME OFFSET TODAY: +{offset} hours (add {offset} hours to US Eastern Time)
 Key times in Israel time today:
-- 8:30 ET macro releases (CPI, NFP, PPI, GDP, Jobless Claims, Empire State Manufacturing): {convert(8,30)} שעון ישראל
-- 9:15 ET macro releases (Industrial Production, Capacity Utilization): {convert(9,15)} שעון ישראל
-- 10:00 ET macro releases (ISM PMI, JOLTS, Consumer Confidence, NAHB): {convert(10,0)} שעון ישראל
+- US economic data releases (CPI, NFP, PPI, GDP, Jobless Claims): {convert(8,30)} שעון ישראל
+- ISM PMI, JOLTS, Consumer Confidence: {convert(10,0)} שעון ישראל
 - FOMC rate decision / FOMC minutes: {convert(14,0)} שעון ישראל
 - Fed Chair press conference: {convert(14,30)} שעון ישראל
 - US market open: {convert(9,30)} שעון ישראל
@@ -1346,160 +1206,94 @@ Event types: macro data (NFP, CPI, PPI, PMI, GDP, jobless claims), Fed rate deci
     return ""
 
 # ══════════════════════════════════════════════════════════════
-# OPENAI CALL
+# GEMINI CALL
 # ══════════════════════════════════════════════════════════════
 
-def _extract_openai_text(resp_data):
-    """Extract text from OpenAI Responses API JSON, tolerating small SDK/API shape changes."""
-    if not isinstance(resp_data, dict):
-        return ""
-
-    text = resp_data.get("output_text")
-    if isinstance(text, str) and text.strip():
-        return text
-
-    chunks = []
-    for item in resp_data.get("output", []) or []:
-        if not isinstance(item, dict):
-            continue
-        for content in item.get("content", []) or []:
-            if not isinstance(content, dict):
-                continue
-            if isinstance(content.get("text"), str):
-                chunks.append(content["text"])
-            elif isinstance(content.get("content"), str):
-                chunks.append(content["content"])
-    return "\n".join(chunks).strip()
-
-
-def _clean_and_parse_json(text):
-    """Clean model output and parse the first complete JSON object."""
-    text = (text or "").strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
-    if text.endswith("```"):
-        text = text[:-3]
-    text = text.strip()
-
-    # Remove citation-like artifacts such as [1] or [1, 2].
-    text = re.sub(r'\s*\[\d+(?:,\s*\d+)*\]', '', text)
-
-    start = text.find('{')
-    if start >= 0:
-        depth = 0
-        end = None
-        for i in range(start, len(text)):
-            if text[i] == '{':
-                depth += 1
-            elif text[i] == '}':
-                depth -= 1
-                if depth == 0:
-                    end = i + 1
-                    break
-        if end is not None:
-            text = text[start:end]
-    return json.loads(text)
-
-
-def call_openai_json(prompt, temperature=0.2, model=None, max_output_tokens=8192, use_web_search=True, timeout=180):
-    """Call OpenAI Responses API and return a parsed JSON object.
-
-    The main review uses OpenAI web search to preserve the previous Gemini + Google Search behavior.
-    Editorial pre-flight and fact-check calls use the fast model without web search because their input
-    is already fully supplied by the script.
-    """
+def call_gemini(prompt, temperature=0.2):
+    """Lower default temperature (0.2 vs 0.7) for factual journalism.
+    Callers pass higher temperature for events calendar where mild variety is fine."""
     import time
     max_retries = 3
-    selected_model = model or OPENAI_MODEL
-
-    base_payload = {
-        "model": selected_model,
-        "input": prompt,
-        "max_output_tokens": max_output_tokens,
-    }
-    if temperature is not None:
-        base_payload["temperature"] = temperature
-    if use_web_search and OPENAI_ENABLE_WEB_SEARCH:
-        base_payload["tools"] = [{"type": "web_search"}]
-
     for attempt in range(max_retries):
-        payload = dict(base_payload)
-        try:
-            r = requests.post(
-                "https://api.openai.com/v1/responses",
-                headers={
-                    "Authorization": f"Bearer {OPENAI_API_KEY}",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-                timeout=timeout,
-            )
-        except requests.RequestException as e:
-            print(f"  OpenAI request error (attempt {attempt+1}/{max_retries}): {e}")
+        r = requests.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key={GEMINI_API_KEY}",
+            headers={"Content-Type": "application/json"},
+            json={
+                "contents": [{"parts": [{"text": prompt}]}],
+                "tools": [{"google_search": {}}],
+                "generationConfig": {
+                    "temperature": temperature,
+                    "maxOutputTokens": 8192
+                }
+            }
+        )
+
+        resp_data = r.json()
+        print(f"  Gemini status: {r.status_code} (attempt {attempt+1}/{max_retries}, temp={temperature})")
+
+        if r.status_code == 503 or r.status_code == 429:
             if attempt < max_retries - 1:
-                time.sleep(30 * (attempt + 1))
-                continue
-            raise
-
-        status = r.status_code
-        try:
-            resp_data = r.json()
-        except Exception:
-            resp_data = {"raw": r.text[:1000]}
-
-        print(f"  OpenAI status: {status} (attempt {attempt+1}/{max_retries}, model={selected_model}, temp={temperature})")
-
-        if not r.ok:
-            err_text = json.dumps(resp_data, ensure_ascii=False)[:1500]
-
-            # Some models/accounts may not support the hosted web search tool. Do not fail the whole run.
-            if status in (400, 422) and "web_search" in err_text and base_payload.get("tools"):
-                current_tool = base_payload.get("tools", [{}])[0].get("type")
-                if current_tool == "web_search":
-                    print("  OpenAI web_search unavailable — retrying with legacy web_search_preview")
-                    base_payload["tools"] = [{"type": "web_search_preview"}]
-                    continue
-                print("  OpenAI web search unavailable — retrying without web search")
-                base_payload.pop("tools", None)
-                continue
-
-            # Some reasoning models reject temperature. Retry once without it.
-            if status in (400, 422) and "temperature" in err_text and "temperature" in base_payload:
-                print("  OpenAI model rejected temperature — retrying without temperature")
-                base_payload.pop("temperature", None)
-                continue
-
-            if status in (408, 409, 429, 500, 502, 503, 504) and attempt < max_retries - 1:
                 wait = 30 * (attempt + 1)
-                print(f"  OpenAI temporary error, retrying in {wait}s...")
+                print(f"  Gemini overloaded, retrying in {wait}s...")
                 time.sleep(wait)
                 continue
+            else:
+                print(f"  Gemini still unavailable after {max_retries} attempts")
+                raise Exception(f"Gemini returned {r.status_code} after {max_retries} retries")
 
-            raise Exception(f"OpenAI returned {status}: {err_text}")
+        candidate = resp_data.get("candidates", [{}])[0]
+        content = candidate.get("content", {})
+        parts = content.get("parts", [])
 
-        text = _extract_openai_text(resp_data)
+        text = ""
+        for part in parts:
+            if "text" in part:
+                text = part["text"]
+
         if not text:
             if attempt < max_retries - 1:
-                print("  OpenAI returned no text, retrying in 30s...")
+                print(f"  Gemini returned no text, retrying in 30s...")
                 time.sleep(30)
                 continue
-            print(f"  OpenAI raw response: {str(resp_data)[:1000]}")
-            raise Exception("OpenAI returned no text")
+            print(f"  Gemini raw response: {str(resp_data)[:500]}")
+            raise Exception("Gemini returned no text")
+
+        text = text.strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+        if text.endswith("```"):
+            text = text[:-3]
+        text = text.strip()
+
+        text = re.sub(r'\s*\[\d+(?:,\s*\d+)*\]', '', text)
+
+        start = text.find('{')
+        if start >= 0:
+            depth = 0
+            end = start
+            for i in range(start, len(text)):
+                if text[i] == '{':
+                    depth += 1
+                elif text[i] == '}':
+                    depth -= 1
+                    if depth == 0:
+                        end = i + 1
+                        break
+            text = text[start:end]
 
         try:
-            return _clean_and_parse_json(text)
+            return json.loads(text)
         except json.JSONDecodeError as e:
             print(f"  JSON parse error: {e}")
-            print(f"  Raw text (first 300 chars): {text[:300]}")
+            print(f"  Raw text (first 200 chars): {text[:200]}")
             print(f"  Raw text (last 300 chars): ...{text[-300:]}")
             if attempt < max_retries - 1:
-                print("  Retrying due to JSON error in 30s...")
+                print(f"  Retrying due to JSON error in 30s...")
                 time.sleep(30)
                 continue
             raise
 
-    raise Exception("call_openai_json: exhausted all retries")
-
+    raise Exception("call_gemini: exhausted all retries")
 
 # ══════════════════════════════════════════════════════════════
 # POST-PROCESSING — STRUCTURE ENFORCEMENT (NEW)
@@ -1567,104 +1361,8 @@ def debullet(text):
         return cleaned[0] if cleaned else ""
     return " ".join(cleaned)
 
-
-def strip_output_links_and_citations(result):
-    """Remove markdown/web-search citation artifacts from the JSON that is written to data.json.
-    The public pages should contain clean Hebrew text. Bad or misplaced citations reduce trust and
-    OpenAI web-search often emits markdown links that the HTML renderer displays verbatim.
-    """
-    def clean_text(s):
-        if not isinstance(s, str):
-            return s
-        original = s
-        # Remove standalone citation parentheses, e.g. ([apnews.com](https://...)).
-        s = re.sub(r'\s*\(\s*\[[^\]]{1,80}\]\(https?://[^\)]*\)\s*\)', '', s)
-        # Remove markdown links but keep readable anchor text when it is not just a domain.
-        def repl_link(m):
-            label = m.group(1).strip()
-            if re.search(r'\.(com|org|net|gov|io|co|il)\b', label, re.I):
-                return ''
-            return label
-        s = re.sub(r'\[([^\]]{1,120})\]\(https?://[^\)]*\)', repl_link, s)
-        # Remove raw URLs and tracking leftovers.
-        s = re.sub(r'https?://\S+', '', s)
-        s = re.sub(r'\?utm_source=openai\b', '', s)
-        s = re.sub(r'utm_source=openai\b', '', s)
-        # Remove footnote-like citations.
-        s = re.sub(r'\s*\[\d+(?:,\s*\d+)*\]', '', s)
-        # Remove empty parentheses left after citation stripping.
-        s = re.sub(r'\s*\(\s*\)', '', s)
-        s = re.sub(r'\s+([,.;:])', r'\1', s)
-        s = re.sub(r'[ \t]{2,}', ' ', s)
-        # Clean doubled spaces before newlines but keep bullet line breaks.
-        s = "\n".join(line.strip() for line in s.split("\n"))
-        if s != original:
-            print("  ✅ Removed markdown/web citation artifacts from output text")
-        return s.strip()
-
-    def walk(x):
-        if isinstance(x, str):
-            return clean_text(x)
-        if isinstance(x, list):
-            return [walk(i) for i in x]
-        if isinstance(x, dict):
-            return {k: walk(v) for k, v in x.items()}
-        return x
-
-    return walk(result)
-
-
-def apply_macro_time_guard(result, review_type, now):
-    """Deterministic guard for the most common time error after switching models:
-    confusing 9:30 ET market open with 8:30 ET / 9:15 ET macro releases.
-    """
-    if review_type not in {"daily_prep", "live_news"} or not isinstance(result, dict):
-        return result
-    offset = get_us_israel_offset(now)
-    empire_il = f"{8 + offset}:30"
-    ip_il = f"{9 + offset}:15"
-    open_il = f"{9 + offset}:30"
-    canonical = (
-        f"* מאקרו היום: מדד Empire State Manufacturing מתפרסם ב-{empire_il} שעון ישראל; "
-        f"Industrial Production ו-Capacity Utilization מתפרסמים ב-{ip_il}; פתיחת המסחר בוול סטריט ב-{open_il}."
-    )
-
-    def fix_content(text):
-        if not isinstance(text, str):
-            return text
-        lines = text.split("\n")
-        out = []
-        changed = False
-        for line in lines:
-            low = line.lower()
-            has_empire = "empire" in low or "אמפייר" in line or "ניו יורק" in line
-            has_ip = "industrial production" in low or "capacity utilization" in low or "ייצור תעשייתי" in line or "ניצולת" in line
-            has_market_open_time = "16:30" in line or "9:30" in line
-            if has_empire and has_ip and has_market_open_time:
-                out.append(canonical)
-                changed = True
-            elif has_empire and has_market_open_time:
-                fixed = re.sub(r'16:30', empire_il, line)
-                fixed = re.sub(r'9:30\s*ET', '8:30 ET', fixed)
-                fixed = re.sub(r'\(9:30\s*ET\)', '(8:30 ET)', fixed)
-                out.append(fixed)
-                changed = changed or (fixed != line)
-            else:
-                out.append(line)
-        if changed:
-            print("  ✅ Macro time guard fixed Empire/IP timing")
-        return "\n".join(out)
-
-    for section in result.get("sections", []) or []:
-        c = section.get("content")
-        if isinstance(c, str):
-            section["content"] = fix_content(c)
-        elif isinstance(c, list):
-            section["content"] = [fix_content(x) if isinstance(x, str) else x for x in c]
-    return result
-
 def enforce_structure(result, review_type, expected_title):
-    """Force the model output to match the structure expected by the HTML renderer.
+    """Force the Gemini output to match the structure expected by the HTML renderer.
     All review pages now use one section only. A dedicated 'שורה תחתונה' section is dropped."""
 
     if not isinstance(result, dict):
@@ -1707,7 +1405,7 @@ def enforce_structure(result, review_type, expected_title):
             merged_parts.append(str(c).strip())
 
     if not merged_parts:
-        # Safety: if the model returned only a bottom-line section, keep its content but under the main heading
+        # Safety: if Gemini returned only a bottom-line section, keep its content but under the main heading
         for s in sections:
             c = s.get("content", "")
             if isinstance(c, list):
@@ -1941,7 +1639,7 @@ def build_source_bundle(market_data, tweets, prior_context):
 def number_provenance_check(result, source_bundle, review_type):
     """Scan the generated review for numeric claims that don't trace to any source.
     Phase 1: informational warnings only — logs suspicious numbers to stdout, returns
-    result unchanged. Drops are handled by fact_check_with_openai downstream.
+    result unchanged. Drops are handled by fact_check_with_gemini downstream.
 
     This catches hallucinations like 'ADP weekly 54.75K' that pass earlier layers because
     they're internally consistent but absent from Finnhub/econ_calendar/tweets."""
@@ -2055,7 +1753,7 @@ def number_provenance_check(result, source_bundle, review_type):
 
 # ══════════════════════════════════════════════════════════════
 # EDITORIAL PRE-FLIGHT (NEW — closes the "missing big story" gap)
-# Runs BEFORE the main review prompt. Asks OpenAI to identify the top
+# Runs BEFORE the main review prompt. Asks Gemini Flash to identify the top
 # 5-7 stories from the tweet pool, with the cannot-miss aspect of each.
 # The result is injected into the main prompt as a MUST-INCLUDE checklist.
 #
@@ -2112,14 +1810,54 @@ TWEETS:
 Return ONLY the JSON object."""
 
     try:
-        parsed = call_openai_json(
-            prompt,
-            temperature=0.2,
-            model=OPENAI_FAST_MODEL,
-            max_output_tokens=2048,
-            use_web_search=False,
-            timeout=90,
+        r = requests.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}",
+            headers={"Content-Type": "application/json"},
+            json={
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"temperature": 0.2, "maxOutputTokens": 2048}
+            },
+            timeout=60
         )
+        if not r.ok:
+            print(f"  Pre-flight Gemini status {r.status_code}, skipping")
+            return ""
+
+        resp_data = r.json()
+        candidate = resp_data.get("candidates", [{}])[0]
+        parts = candidate.get("content", {}).get("parts", [])
+        text = ""
+        for part in parts:
+            if "text" in part:
+                text = part["text"]
+
+        if not text:
+            print("  Pre-flight returned no text, skipping")
+            return ""
+
+        text = text.strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+        if text.endswith("```"):
+            text = text[:-3]
+        text = text.strip()
+
+        # Extract the first complete JSON object
+        start = text.find('{')
+        if start >= 0:
+            depth = 0
+            end = start
+            for i in range(start, len(text)):
+                if text[i] == '{':
+                    depth += 1
+                elif text[i] == '}':
+                    depth -= 1
+                    if depth == 0:
+                        end = i + 1
+                        break
+            text = text[start:end]
+
+        parsed = json.loads(text)
         stories = parsed.get("stories", [])
 
         if not stories or not isinstance(stories, list):
@@ -2164,255 +1902,11 @@ Return ONLY the JSON object."""
 
 
 # ══════════════════════════════════════════════════════════════
-# ABSOLUTE PRICE SANITY GUARD
-# ══════════════════════════════════════════════════════════════
-
-def apply_absolute_price_sanity_guard(result):
-    """Fix embarrassing absolute-price errors that direction guards cannot catch.
-
-    Example: IBIT can trade around $30-$70 while Bitcoin trades in the tens of thousands.
-    If a Hebrew bullet says Bitcoin is around a two-digit dollar value, this guard rewrites
-    that number to the verified BTC spot price when available, or removes the exact price.
-    """
-    if not isinstance(result, dict):
-        return result
-
-    btc = _LAST_SPOT_DATA.get("BTC_USD") or {}
-    btc_price = btc.get("price")
-    btc_price_txt = f"{btc_price:,.0f}" if isinstance(btc_price, (int, float)) and btc_price > 1000 else None
-
-    def fix_text(text):
-        if not isinstance(text, str):
-            return text
-        out_lines = []
-        changed = False
-        for line in text.split("\n"):
-            low = line.lower()
-            mentions_btc = any(term in low for term in ["ביטקוין", "bitcoin", "btc"])
-            mentions_ibit = "ibit" in low
-            if mentions_btc and not mentions_ibit:
-                def repl(m):
-                    nonlocal changed
-                    raw = m.group(1)
-                    try:
-                        val = float(raw.replace(",", ""))
-                    except Exception:
-                        return m.group(0)
-                    # BTC spot should not be a one/two/three digit USD price.
-                    if val < 1000:
-                        changed = True
-                        if btc_price_txt:
-                            return btc_price_txt
-                        return ""
-                    return m.group(0)
-                fixed = re.sub(r'(?<!\d)(\d{1,3}(?:,\d{3})*|\d{1,3}(?:\.\d+)?)(?=\s*(?:דולר|USD|\$))', repl, line)
-                if fixed != line:
-                    print("  ✅ Absolute price guard fixed invalid BTC dollar price")
-                line = fixed
-            out_lines.append(line)
-        return "\n".join(out_lines) if changed else text
-
-    for section in result.get("sections", []):
-        content = section.get("content")
-        if isinstance(content, str):
-            section["content"] = fix_text(content)
-        elif isinstance(content, list):
-            section["content"] = [fix_text(x) if isinstance(x, str) else x for x in content]
-    for item in result.get("items", []):
-        if isinstance(item.get("description"), str):
-            item["description"] = fix_text(item["description"])
-        if isinstance(item.get("title"), str):
-            item["title"] = fix_text(item["title"])
-    return result
-
-
-
-# ══════════════════════════════════════════════════════════════
-# ETF PROXY PUBLICATION GUARD — hard stop for SPY/USO/GLD/IBIT mistakes
-# ══════════════════════════════════════════════════════════════
-
-def _num_close(a, b, rel_tol=0.0025, abs_tol=0.03):
-    try:
-        a = float(str(a).replace(',', ''))
-        b = float(str(b).replace(',', ''))
-    except Exception:
-        return False
-    return abs(a - b) <= max(abs_tol, abs(b) * rel_tol)
-
-
-def _line_has_any(line, terms):
-    low = line.lower()
-    return any(t.lower() in low for t in terms)
-
-
-def _extract_numbers_from_line(line):
-    return [m.group(1) for m in _NUM_TOKEN.finditer(line or "")]
-
-
-def apply_etf_proxy_publication_guard(result):
-    """Remove/fix public text that transforms ETF proxy prices or percentages into
-    underlying asset prices/levels.
-
-    This is the critical guard for errors like:
-    - SPY +0.54% -> "S&P futures +0.54%"
-    - USO $125.43 -> "WTI $125.43 per barrel"
-    - GLD $386.54 -> "gold $386.54/oz"
-    - IBIT $36 -> "Bitcoin $36"
-    """
-    if not isinstance(result, dict):
-        return result
-
-    prices = (_LAST_MARKET_DATA.get("prices") or {})
-    pcts = (_LAST_MARKET_DATA.get("pcts") or {})
-    futures_proxy_symbols = [x for x in ("SPY", "QQQ", "DIA", "IWM") if x in pcts]
-    commodity_proxy_symbols = [x for x in ("USO", "BNO", "GLD", "SLV") if x in prices]
-    crypto_proxy_symbols = [x for x in ("IBIT",) if x in prices]
-    rate_level_proxy_symbols = [x for x in ("TLT", "UUP", "VIXY") if x in prices]
-
-    def line_contains_proxy_pct(line, symbols):
-        if "%" not in line:
-            return False
-        for raw in _extract_numbers_from_line(line):
-            for sym in symbols:
-                if _num_close(raw, abs(float(pcts.get(sym, 999999))), abs_tol=0.015):
-                    return True
-        return False
-
-    def line_contains_proxy_price(line, symbols):
-        price_like = any(tok in line for tok in ["$", "דולר", "לחבית", "אונק", "לאונק", "נקודות"])
-        if not price_like:
-            return False
-        for raw in _extract_numbers_from_line(line):
-            for sym in symbols:
-                if _num_close(raw, float(prices.get(sym, -999999))):
-                    return True
-        return False
-
-    def fix_line(line):
-        if not isinstance(line, str) or not line.strip():
-            return line
-        original = line
-
-        # 1) Futures/index % accidentally sourced from SPY/QQQ/DIA/IWM.
-        if _line_has_any(line, ["חוזים", "futures", "premarket", "טרום"]):
-            if line_contains_proxy_pct(line, futures_proxy_symbols):
-                line = "החוזים העתידיים מצביעים על פתיחה חיובית בוול סטריט."
-                print("  ✅ ETF proxy guard removed futures % derived from index ETF proxy")
-
-        # 2) Commodity ETF share price published as spot/futures price.
-        if _line_has_any(line, ["נפט", "wti", "brent", "ברנט", "זהב", "gold", "כסף", "silver"]):
-            if line_contains_proxy_price(line, commodity_proxy_symbols):
-                if _line_has_any(line, ["נפט", "wti", "brent", "ברנט"]):
-                    if _contains_any(line, _DOWN_WORDS):
-                        line = "מחירי הנפט יורדים על רקע ההתפתחויות הגיאופוליטיות."
-                    elif _contains_any(line, _UP_WORDS):
-                        line = "מחירי הנפט עולים על רקע ההתפתחויות בשוק האנרגיה."
-                    else:
-                        line = "מחירי הנפט נעים בתנודתיות על רקע ההתפתחויות הגיאופוליטיות."
-                elif _line_has_any(line, ["זהב", "gold"]):
-                    line = "הזהב נסחר בתנודתיות מתונה."
-                elif _line_has_any(line, ["כסף", "silver"]):
-                    line = "הכסף נסחר בתנודתיות."
-                # Preserve a valid BTC spot sentence if the model bundled gold/oil and BTC in one bullet.
-                if _line_has_any(original, ["ביטקוין", "bitcoin", "btc"]):
-                    btc = _LAST_SPOT_DATA.get("BTC_USD") or {}
-                    btc_price = btc.get("price")
-                    if isinstance(btc_price, (int, float)) and btc_price > 1000:
-                        line = line.rstrip(" .") + f"; ביטקוין נסחר סביב {btc_price:,.0f} דולר."
-                print("  ✅ ETF proxy guard removed commodity price derived from ETF share price")
-
-        # 3) IBIT share price as BTC spot. Prefer real BTC spot if available.
-        if _line_has_any(line, ["ביטקוין", "bitcoin", "btc"]) and not _line_has_any(line, ["ibit"]):
-            if line_contains_proxy_price(line, crypto_proxy_symbols):
-                btc = _LAST_SPOT_DATA.get("BTC_USD") or {}
-                btc_price = btc.get("price")
-                if isinstance(btc_price, (int, float)) and btc_price > 1000:
-                    line = re.sub(r'(?<!\d)(\d{1,3}(?:,\d{3})*|\d{1,3}(?:\.\d+)?)(?=\s*(?:דולר|USD|\$))', f"{btc_price:,.0f}", line)
-                else:
-                    line = "ביטקוין נסחר בתנודתיות."
-                print("  ✅ ETF proxy guard fixed BTC price derived from IBIT ETF")
-
-        # 4) TLT/UUP/VIXY share prices as yield/DXY/VIX levels.
-        if _line_has_any(line, ["תשוא", "yield", "dxy", "דולר", "vix", "תנודתיות"]):
-            if line_contains_proxy_price(line, rate_level_proxy_symbols):
-                if _line_has_any(line, ["vix", "תנודתיות"]):
-                    line = "מדד התנודתיות נדרש לאימות ממקור ייעודי."
-                elif _line_has_any(line, ["dxy", "דולר"]):
-                    line = "הדולר נדרש לאימות מול מדד DXY או מקור מטבע ייעודי."
-                else:
-                    line = "תשואות האג\"ח נדרשות לאימות ממקור תשואות ייעודי."
-                print("  ✅ ETF proxy guard removed rate/dollar/vol level derived from ETF share price")
-
-        return line if line != original else original
-
-    def fix_text(text):
-        if not isinstance(text, str):
-            return text
-        return "\n".join(fix_line(line) for line in text.split("\n"))
-
-    for section in result.get("sections", []) or []:
-        c = section.get("content")
-        if isinstance(c, str):
-            section["content"] = fix_text(c)
-        elif isinstance(c, list):
-            section["content"] = [fix_text(x) if isinstance(x, str) else x for x in c]
-    for item in result.get("items", []) or []:
-        if isinstance(item.get("title"), str):
-            item["title"] = fix_text(item["title"])
-        if isinstance(item.get("description"), str):
-            item["description"] = fix_text(item["description"])
-    return result
-
-
-def final_hard_stop_checks(result):
-    """Fail the run instead of publishing if critical ETF-proxy errors survive."""
-    if not isinstance(result, dict):
-        return result
-
-    prices = (_LAST_MARKET_DATA.get("prices") or {})
-    pcts = (_LAST_MARKET_DATA.get("pcts") or {})
-    fatal = []
-
-    def scan_line(line, label):
-        if not isinstance(line, str):
-            return
-        nums = _extract_numbers_from_line(line)
-        if _line_has_any(line, ["חוזים", "futures", "premarket", "טרום"]) and "%" in line:
-            for raw in nums:
-                for sym in ("SPY", "QQQ", "DIA", "IWM"):
-                    if sym in pcts and _num_close(raw, abs(float(pcts[sym])), abs_tol=0.015):
-                        fatal.append(f"{label}: futures/index % appears to be {sym} ETF proxy ({raw}%)")
-        if _line_has_any(line, ["נפט", "wti", "brent", "ברנט", "זהב", "gold", "כסף", "silver", "ביטקוין", "bitcoin", "btc", "vix", "dxy", "תשוא"]):
-            for raw in nums:
-                for sym in ("USO", "BNO", "GLD", "SLV", "IBIT", "TLT", "UUP", "VIXY"):
-                    if sym in prices and _num_close(raw, float(prices[sym])):
-                        fatal.append(f"{label}: absolute price/level appears to be {sym} ETF proxy share price ({raw})")
-
-    for i, section in enumerate(result.get("sections", []) or []):
-        c = section.get("content", "")
-        if isinstance(c, list):
-            c = "\n".join(str(x) for x in c)
-        for j, line in enumerate(str(c).split("\n")):
-            scan_line(line, f"section[{i}] line[{j}]")
-    for i, item in enumerate(result.get("items", []) or []):
-        scan_line(item.get("title", ""), f"event[{i}].title")
-        scan_line(item.get("description", ""), f"event[{i}].description")
-
-    if fatal:
-        print("\n  ❌ FINAL HARD STOP — critical ETF proxy publication errors remain:")
-        for f in fatal[:20]:
-            print(f"     - {f}")
-        raise RuntimeError("Critical ETF proxy publication error: refusing to publish inaccurate market review")
-
-    print("  ✅ Final hard stop checks passed — no ETF proxy price/futures leakage")
-    return result
-
-# ══════════════════════════════════════════════════════════════
 # FACT-CHECKER
 # ══════════════════════════════════════════════════════════════
 
-def fact_check_with_openai(result, market_data, review_type, provenance_warnings=None, ticker_warnings=None):
-    """OpenAI-based fact check. Runs AFTER enforce_structure so the structure it sees is already correct.
+def fact_check_with_gemini(result, market_data, review_type, provenance_warnings=None, ticker_warnings=None):
+    """Flash-based fact check. Runs AFTER enforce_structure so the structure it sees is already correct.
     If provenance_warnings is provided, the fact-checker is instructed to remove bullets whose
     numbers cannot be verified against sources.
     If ticker_warnings is provided, the fact-checker is instructed to fix or remove bullets
@@ -2427,7 +1921,7 @@ def fact_check_with_openai(result, market_data, review_type, provenance_warnings
         lines = ["\nPROVENANCE WARNINGS — these numbers from the review were NOT found in any source:"]
         for w in provenance_warnings[:15]:
             lines.append(f"- In {w['label']}: number '{w['number']}' (context: ...{w['context']}...)")
-        lines.append("\nFor each warning above: if the number is not explicitly supported by the VERIFIED MARKET DATA, the supplied source tweets/posts, prior context, or a fresh web-search result you can directly verify, REMOVE the entire bullet containing that number. Do NOT rely on memory or plausibility. Do NOT silently fix the number unless a verified source provides the corrected value.")
+        lines.append("\nFor each warning above: either (a) the number is correct and you can verify it via your own knowledge — keep the bullet; or (b) the number is a hallucination — REMOVE the entire bullet containing that number from the content. Do NOT just silently fix the number to something else — if it can't be verified, remove the claim.")
         provenance_block = "\n".join(lines)
 
     # Build the ticker direction block — these are sign-flip errors caught by Finnhub
@@ -2459,12 +1953,11 @@ THE REVIEW TO CHECK:
 {review_json}
 
 YOUR TASK:
-- Compare EVERY number, percentage, and factual claim in the review against verified data and explicit sources only. Do NOT rely on memory or plausibility.
+- Compare EVERY number, percentage, and factual claim in the review against the verified data and your own knowledge.
 - Fix any number that contradicts the verified data.
 - Fix any factual error (wrong company attribution, wrong political titles, wrong dates, wrong terminology).
 - For sector ETF percentages (XLE/XLK/XLF/XLY/XLV/XLI): if a specific sector number appears in the review that does NOT match the Finnhub data, REMOVE that claim or replace it with a number from the Finnhub data.
 - For 10-year Treasury yield, commodity absolute prices ($/barrel, $/oz), and DXY level: these are NOT in Finnhub. Only keep them if they are clearly reasonable; otherwise remove.
-- For Bitcoin: NEVER treat IBIT ETF share price as the Bitcoin spot price. If Bitcoin is described as a two-digit or three-digit dollar price, fix it using the verified Bitcoin spot line above, or remove the exact price if no spot line exists.
 - DO NOT change the writing style, structure, section count, or section headings.
 - DO NOT remove content — only fix errors or remove clearly-hallucinated numbers.
 - EXCEPTION: if PROVENANCE WARNINGS above flag a number you cannot verify, remove the entire bullet containing it (see provenance instructions above).
@@ -2489,17 +1982,58 @@ COMMON ERRORS TO CATCH:
 - Directional wording must match the verified market data. If oil proxies are positive, phrases like "מחירי הנפט צונחים" are factual errors. If oil proxies are negative, phrases like "מחירי הנפט מזנקים" are factual errors.
 - Geopolitical softening: if the review describes the US-Iran war as "tensions" or "escalation" or "diplomatic crisis", REWRITE using accurate terms (מלחמה, מבצע צבאי, תקיפה).
 
-OUTPUT: Return the corrected review as valid JSON in EXACTLY the same structure (same title, same section headings, same number of sections — exactly 1 section for all review pages except events). No backticks, no explanations — pure JSON only."""
+OUTPUT: Return the corrected review as valid JSON in EXACTLY the same structure (same title, same section headings, same number of sections — for live_news that means exactly 1 section, for others exactly 2). No backticks, no explanations — pure JSON only."""
 
     try:
-        checked = call_openai_json(
-            prompt,
-            temperature=0.1,
-            model=OPENAI_FAST_MODEL,
-            max_output_tokens=8192,
-            use_web_search=True,
-            timeout=120,
+        r = requests.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}",
+            headers={"Content-Type": "application/json"},
+            json={
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"temperature": 0.1, "maxOutputTokens": 8192}
+            },
+            timeout=120
         )
+        if not r.ok:
+            print(f"  Fact-check Gemini returned status {r.status_code}, skipping")
+            return result
+
+        resp_data = r.json()
+        candidate = resp_data.get("candidates", [{}])[0]
+        parts = candidate.get("content", {}).get("parts", [])
+        text = ""
+        for part in parts:
+            if "text" in part:
+                text = part["text"]
+
+        if not text:
+            print("  Fact-check returned no text, skipping")
+            return result
+
+        text = text.strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+        if text.endswith("```"):
+            text = text[:-3]
+        text = text.strip()
+
+        text = re.sub(r'\s*\[\d+(?:,\s*\d+)*\]', '', text)
+
+        start = text.find('{')
+        if start >= 0:
+            depth = 0
+            end = start
+            for i in range(start, len(text)):
+                if text[i] == '{':
+                    depth += 1
+                elif text[i] == '}':
+                    depth -= 1
+                    if depth == 0:
+                        end = i + 1
+                        break
+            text = text[start:end]
+
+        checked = json.loads(text)
 
         if "sections" in result and "sections" not in checked:
             print("  Fact-check broke JSON structure, skipping")
@@ -2570,7 +2104,7 @@ def main():
     print(f"  Title date: {title_date_str} ({title_day_name}), week_range: {week_range}")
 
     # Compute the canonical "review date" that will be forced onto result["date"].
-    # The model can hallucinate dates (e.g. weekly_summary date showing 5/9/2026 in the future).
+    # Gemini hallucinates dates (e.g. weekly_summary date showing 5/9/2026 in the future).
     # We override deterministically based on the review type.
     if REVIEW_TYPE in ("daily_prep", "daily_summary"):
         review_date = title_date_str  # the trading day this review is about
@@ -2667,7 +2201,7 @@ def main():
 
     # Temperature: 0.2 for factual journalism, 0.4 for events (allow mild variety)
     gen_temp = 0.4 if REVIEW_TYPE == "events" else 0.2
-    result = call_openai_json(prompt, temperature=gen_temp, model=OPENAI_MODEL, max_output_tokens=8192, use_web_search=True)
+    result = call_gemini(prompt, temperature=gen_temp)
 
     # Layer 1: Regex-based auto-fix (instant, deterministic)
     print("\n── Layer 1: Regex validation ──")
@@ -2696,27 +2230,15 @@ def main():
         print("  No tickers mentioned (or all excluded) — skipping per-ticker check")
     ticker_warnings = result.pop("_ticker_warnings", None)
 
-    # Layer 4: OpenAI fact-checker — uses provenance + ticker warnings to fix or drop bullets
-    print("\n── Layer 4: OpenAI fact-checker ──")
-    result = fact_check_with_openai(result, market_data, REVIEW_TYPE,
+    # Layer 4: Gemini Flash fact-checker — uses provenance + ticker warnings to fix or drop bullets
+    print("\n── Layer 4: Gemini fact-checker ──")
+    result = fact_check_with_gemini(result, market_data, REVIEW_TYPE,
                                      provenance_warnings=provenance_warnings,
                                      ticker_warnings=ticker_warnings)
 
-    # Layer 4b: Deterministic absolute-price sanity guard — catches IBIT-as-BTC and similar errors
-    print("\n── Layer 4b: Absolute price sanity guard ──")
-    result = apply_absolute_price_sanity_guard(result)
-
-    # Layer 4c: Deterministic market-direction guard — fixes words like צונח/מזנק if they contradict Finnhub data
-    print("\n── Layer 4c: Market direction guard ──")
+    # Layer 4b: Deterministic market-direction guard — fixes words like צונח/מזנק if they contradict Finnhub data
+    print("\n── Layer 4b: Market direction guard ──")
     result = apply_market_direction_guard(result, REVIEW_TYPE)
-
-    # Layer 4d: Macro release time guard — prevents 9:30 ET market-open confusion
-    print("\n── Layer 4d: Macro time guard ──")
-    result = apply_macro_time_guard(result, REVIEW_TYPE, now)
-
-    # Layer 4e: Strip citation/link artifacts from web-search output
-    print("\n── Layer 4e: Output citation sanitizer ──")
-    result = strip_output_links_and_citations(result)
 
     # Layer 5: Re-enforce structure (defensive — fact-checker sometimes alters section headings)
     print("\n── Layer 5: Final structure enforcement ──")
@@ -2725,10 +2247,6 @@ def main():
     # Layer 6: Pre-market tense guard (daily_prep only, only if run before US market open)
     print("\n── Layer 6: Pre-market tense guard ──")
     result = apply_pre_market_tense_guard(result, REVIEW_TYPE)
-
-    # Layer 7: Final citation sanitizer after all model/structure passes
-    print("\n── Layer 7: Final output citation sanitizer ──")
-    result = strip_output_links_and_citations(result)
     print("── Validation complete ──\n")
 
     # Defensive: strip any internal metadata before persisting
@@ -2757,7 +2275,7 @@ def main():
         else:
             print(f"  Warning: no 'items' key. Keys: {list(result.keys())}")
     elif REVIEW_TYPE in key_map:
-        # Force the canonical date — The model sometimes writes nonsense dates
+        # Force the canonical date — Gemini sometimes writes nonsense dates
         # (e.g. weekly_summary returning 2026-09-05 when the week ended 2026-05-08).
         original_date = result.get("date", "")
         if original_date != review_date:
