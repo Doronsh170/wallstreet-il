@@ -179,6 +179,20 @@
             .trim();
         }
 
+
+        function dedupeExactReviewLines(text) {
+          if (Array.isArray(text)) text = text.join('\n');
+          const seen = new Set();
+          const out = [];
+          String(text || '').split('\n').forEach(line => {
+            const key = line.trim().replace(/^[*•\-]+\s*/, '').replace(/\s+/g, ' ').trim();
+            if (key && seen.has(key)) return;
+            if (key) seen.add(key);
+            out.push(line);
+          });
+          return out.join('\n').trim();
+        }
+
         function escapeHTML(value) {
           return String(value || '')
             .replace(/&/g, '&amp;')
@@ -191,6 +205,7 @@
         function formatContent(text) {
           if (Array.isArray(text)) text = text.join('\n');
           text = stripReviewLinks(text);
+          text = dedupeExactReviewLines(text);
           const lines = text.split('\n').filter(l => l.trim());
           const bullets = [];
           const nonBullets = [];
