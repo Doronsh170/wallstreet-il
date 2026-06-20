@@ -15,12 +15,6 @@ on:
           - weekly_summary
           - events
           - live_news
-  schedule:
-    - cron: '30 10 * * 1-5'
-    - cron: '30 20 * * 1-5'
-    - cron: '00 10 * * 0'
-    - cron: '00 22 * * 5'
-    - cron: '00 14,16,18,20 * * 1-5'
 
 concurrency:
   group: wallstreet-il-update
@@ -42,35 +36,10 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
-      - name: Determine review type from trigger
-        id: type
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "type=${{ github.event.inputs.review_type }}" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          HOUR=$(date -u +%H)
-          MIN=$(date -u +%M)
-          DOW=$(date -u +%u) # 1=Mon ... 7=Sun
-
-          if [ "$DOW" = "7" ] && [ "$HOUR" = "10" ]; then
-            echo "type=weekly_prep" >> $GITHUB_OUTPUT
-          elif [ "$DOW" = "5" ] && [ "$HOUR" = "22" ]; then
-            echo "type=weekly_summary" >> $GITHUB_OUTPUT
-          elif [ "$HOUR" = "10" ] && [ "$MIN" = "30" ]; then
-            echo "type=daily_prep" >> $GITHUB_OUTPUT
-          elif [ "$HOUR" = "20" ] && [ "$MIN" = "30" ]; then
-            echo "type=daily_summary" >> $GITHUB_OUTPUT
-          else
-            echo "type=live_news" >> $GITHUB_OUTPUT
-          fi
-
       - name: Debug before update
         shell: bash
         run: |
-          echo "Review type: ${{ steps.type.outputs.type }}"
+          echo "Review type: ${{ github.event.inputs.review_type }}"
           echo "Branch: ${{ github.ref_name }}"
           echo "Working directory: $(pwd)"
           echo "Files at root:"
@@ -105,7 +74,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           TWITTER_API_KEY: ${{ secrets.TWITTER_API_KEY }}
           FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
-          REVIEW_TYPE: ${{ steps.type.outputs.type }}
+          REVIEW_TYPE: ${{ github.event.inputs.review_type }}
         run: python scripts/update_data.py
 
       - name: Verify update result
@@ -114,11 +83,9 @@ jobs:
           echo "After update data.json status:"
           sha256sum data.json /tmp/data.before.json
           python - <<'PY'
-          import json, os
-          from datetime import datetime
-          from zoneinfo import ZoneInfo
+          import json
 
-          review_type='${{ steps.type.outputs.type }}'
+          review_type='${{ github.event.inputs.review_type }}'
           key_map={
               'daily_prep':'dailyPrep',
               'daily_summary':'dailySummary',
@@ -157,6 +124,6 @@ jobs:
             echo "::error::No changes to commit. data.json did not change, so GitHub Pages will keep showing the old review."
             exit 1
           fi
-          git commit -m "Update ${{ steps.type.outputs.type }} - $(date -u +%Y-%m-%dT%H:%M:%S)"
+          git commit -m "Update ${{ github.event.inputs.review_type }} - $(date -u +%Y-%m-%dT%H:%M:%S)"
           git pull --rebase origin main || { echo "Rebase conflict — data already updated by another run, skipping."; git rebase --abort; exit 0; }
           git push
