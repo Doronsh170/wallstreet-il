@@ -1011,6 +1011,9 @@ CRITICAL — OUTPUT FORMAT (MANDATORY, NOT NEGOTIABLE):
 - Each bullet: "* Short topic label: one concise analytical sentence with numbers."
 - Do NOT add a "שורה תחתונה", "סיכום", "מסקנה", or any closing paragraph as a separate section.
 - Do NOT use <b>, <strong>, **, ■, 📍, or any HTML/markdown formatting inside content.
+- Do NOT include raw URLs, Markdown links, citation brackets, source links, or strings like utm_source=openai inside the review content.
+- Do NOT include source domains in brackets, for example [kiplinger.com], [apnews.com], [reddit.com].
+- If attribution is necessary, use source names only, for example: לפי Reuters or לפי Bloomberg. Never include the URL.
 - Do NOT add extra sections. If you are tempted to add another section, MERGE that content into the only section as more bullets.
 """
 
@@ -2096,6 +2099,53 @@ OUTPUT: Return the corrected review as valid JSON in EXACTLY the same structure 
         print(f"  Fact-check failed: {e}, using original")
         return result
 
+
+def strip_links_from_result(result):
+    """Remove web-search URLs and Markdown citations from final JSON before saving data.json.
+    OpenAI web_search may add citations such as ([source](https://...)). The site renderer
+    is intentionally plain text, so source links must not be persisted in review content.
+    """
+    if not isinstance(result, dict):
+        return result
+
+    def clean_text(text):
+        if not isinstance(text, str):
+            return text
+        # Remove normal Markdown links: ([source](https://...)) or [source](https://...)
+        text = re.sub(r'\s*\(?\s*\[[^\]\n]{1,120}\]\s*\(\s*https?://.*?\)\s*\)?', '', text, flags=re.DOTALL)
+        # Remove broken Markdown links split across lines: [source]\nhttps://...
+        text = re.sub(r'\s*\(?\s*\[[^\]\n]{1,120}\]\s*[\r\n]+\s*https?://\S+\s*\)?', '', text)
+        # Remove any raw URL that survived.
+        text = re.sub(r'\s*\(?https?://\S+', '', text)
+        # Remove OpenAI tracking fragments if a URL was split.
+        text = re.sub(r'\s*\(?utm_source=openai\)?', '', text)
+        # Remove remaining source-domain brackets such as [kiplinger.com].
+        text = re.sub(r'\s*\(?\[[A-Za-z0-9 ._-]+\.(?:com|org|net|io|co|gov|edu|finance)[^\]\n]*\]\)?', '', text)
+        text = re.sub(r'\s*[()]{2,}\s*', ' ', text)
+        text = re.sub(r'\s*\(\s*\)', '', text)
+        text = re.sub(r'[ \t]{2,}', ' ', text)
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        return text.strip()
+
+    for key in ("title", "date"):
+        if isinstance(result.get(key), str):
+            result[key] = clean_text(result[key])
+
+    for section in result.get("sections", []) or []:
+        if isinstance(section.get("heading"), str):
+            section["heading"] = clean_text(section["heading"])
+        content = section.get("content")
+        if isinstance(content, str):
+            section["content"] = clean_text(content)
+        elif isinstance(content, list):
+            section["content"] = [clean_text(x) if isinstance(x, str) else x for x in content]
+
+    for item in result.get("items", []) or []:
+        for key in ("title", "description"):
+            if isinstance(item.get(key), str):
+                item[key] = clean_text(item[key])
+    return result
+
 # ══════════════════════════════════════════════════════════════
 # MAIN
 # ══════════════════════════════════════════════════════════════
@@ -2288,6 +2338,10 @@ def main():
     print("\n── Layer 6: Pre-market tense guard ──")
     result = apply_pre_market_tense_guard(result, REVIEW_TYPE)
     print("── Validation complete ──\n")
+
+    # Layer 7: remove OpenAI web-search citations / raw URLs before persisting
+    print("\n── Layer 7: Strip source links ──")
+    result = strip_links_from_result(result)
 
     # Defensive: strip any internal metadata before persisting
     result = {k: v for k, v in result.items() if not k.startswith("_")}
