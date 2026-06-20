@@ -1496,6 +1496,73 @@ def debullet(text):
         return cleaned[0] if cleaned else ""
     return " ".join(cleaned)
 
+def _dedupe_line_key(line):
+    """Build a stable key for duplicate review bullets.
+    Removes bullet markers and normalizes whitespace so exact repeated bullets are caught
+    even after minor formatting changes."""
+    if not isinstance(line, str):
+        return ""
+    x = line.strip()
+    x = re.sub(rf'^(\*|\-|{_BULLET_CHARS})\s+', '', x)
+    x = re.sub(r'\s+', ' ', x)
+    x = x.strip(" .,:;״'`\"")
+    return x.lower()
+
+def deduplicate_bullets_text(text):
+    """Remove repeated bullets/lines from a review section, preserving original order.
+    This is a deterministic guard against the LLM/fact-checker returning the same
+    points twice and the final structure merge persisting both copies."""
+    if not isinstance(text, str) or not text.strip():
+        return text
+    out = []
+    seen = set()
+    removed = 0
+    for line in text.split('\n'):
+        raw = line.rstrip()
+        stripped = raw.strip()
+        if not stripped:
+            out.append(raw)
+            continue
+        key = _dedupe_line_key(stripped)
+        # Only dedupe meaningful lines. Very short fragments may be headings or dates.
+        if len(key) >= 24:
+            if key in seen:
+                removed += 1
+                continue
+            seen.add(key)
+        out.append(raw)
+    if removed:
+        print(f"  ✅ Removed {removed} duplicate review bullet(s)")
+    return '\n'.join(out).strip()
+
+def deduplicate_result_bullets(result):
+    """Apply bullet dedupe to every section in a review result."""
+    if not isinstance(result, dict):
+        return result
+    for section in result.get('sections', []) or []:
+        content = section.get('content')
+        if isinstance(content, str):
+            section['content'] = deduplicate_bullets_text(content)
+        elif isinstance(content, list):
+            cleaned = []
+            seen = set()
+            removed = 0
+            for item in content:
+                if not isinstance(item, str):
+                    cleaned.append(item)
+                    continue
+                key = _dedupe_line_key(item)
+                if len(key) >= 24 and key in seen:
+                    removed += 1
+                    continue
+                if len(key) >= 24:
+                    seen.add(key)
+                cleaned.append(item)
+            if removed:
+                print(f"  ✅ Removed {removed} duplicate review bullet(s) from list content")
+            section['content'] = cleaned
+    return result
+
 def enforce_structure(result, review_type, expected_title):
     """Force the model output to match the structure expected by the HTML renderer.
     All review pages now use one section only. A dedicated 'שורה תחתונה' section is dropped."""
@@ -1549,7 +1616,7 @@ def enforce_structure(result, review_type, expected_title):
                 merged_parts.append(str(c).strip())
 
     merged = "\n".join(merged_parts)
-    normalized = normalize_bullets(merged)
+    normalized = deduplicate_bullets_text(normalize_bullets(merged))
 
     if len(sections) != 1 or dropped_bottom_lines:
         print(f"  ✅ Sections normalized: {len(sections)} → 1; dropped bottom-line sections: {dropped_bottom_lines}")
@@ -2042,6 +2109,8 @@ YOUR TASK:
 - For sector ETF percentages (XLE/XLK/XLF/XLY/XLV/XLI): if a specific sector number appears in the review that does NOT match the Finnhub data, REMOVE that claim or replace it with a number from the Finnhub data.
 - For 10-year Treasury yield, commodity absolute prices ($/barrel, $/oz), and DXY level: these are NOT in Finnhub. Only keep them if they are clearly reasonable; otherwise remove.
 - DO NOT change the writing style, structure, section count, or section headings.
+- DO NOT add sections. Keep exactly the same number of sections as the input JSON.
+- DO NOT duplicate bullets or repeat the same point in another section. If a bullet appears twice, keep only the first occurrence.
 - DO NOT remove content — only fix errors or remove clearly-hallucinated numbers.
 - EXCEPTION: if PROVENANCE WARNINGS above flag a number you cannot verify, remove the entire bullet containing it (see provenance instructions above).
 - EXCEPTION: if TICKER DIRECTION CONTRADICTIONS above are listed, follow the FIX RULE for each — flipping direction words and percentages to match Finnhub, or removing the bullet entirely.
@@ -2065,7 +2134,7 @@ COMMON ERRORS TO CATCH:
 - Directional wording must match the verified market data. If oil proxies are positive, phrases like "מחירי הנפט צונחים" are factual errors. If oil proxies are negative, phrases like "מחירי הנפט מזנקים" are factual errors.
 - Geopolitical softening: if the review describes the US-Iran war as "tensions" or "escalation" or "diplomatic crisis", REWRITE using accurate terms (מלחמה, מבצע צבאי, תקיפה).
 
-OUTPUT: Return the corrected review as valid JSON in EXACTLY the same structure (same title, same section headings, same number of sections — for live_news that means exactly 1 section, for others exactly 2). No backticks, no explanations — pure JSON only."""
+OUTPUT: Return the corrected review as valid JSON in EXACTLY the same structure as the input (same title, same section headings, same number of sections). For all normal review pages after structure enforcement this means exactly 1 section. No backticks, no explanations — pure JSON only."""
 
     try:
         checked = call_openai_json(
@@ -2342,6 +2411,10 @@ def main():
     # Layer 7: remove OpenAI web-search citations / raw URLs before persisting
     print("\n── Layer 7: Strip source links ──")
     result = strip_links_from_result(result)
+
+    # Layer 8: remove duplicate bullets after link stripping and fact-check corrections
+    print("\n── Layer 8: Deduplicate bullets ──")
+    result = deduplicate_result_bullets(result)
 
     # Defensive: strip any internal metadata before persisting
     result = {k: v for k, v in result.items() if not k.startswith("_")}
