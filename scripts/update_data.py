@@ -7,7 +7,11 @@ except ImportError:
 
 # Use real Israel timezone, including daylight-saving changes.
 ISR_TZ = ZoneInfo("Asia/Jerusalem") if ZoneInfo else timezone(timedelta(hours=3))
-GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
+OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
+OPENAI_MODEL_MAIN = os.environ.get("OPENAI_MODEL_MAIN", "gpt-5.4")
+OPENAI_MODEL_FAST = os.environ.get("OPENAI_MODEL_FAST", "gpt-5.4-mini")
+OPENAI_REASONING_EFFORT = os.environ.get("OPENAI_REASONING_EFFORT", "low")
+OPENAI_API_URL = "https://api.openai.com/v1/responses"
 TWITTER_API_KEY = os.environ["TWITTER_API_KEY"]
 FINNHUB_API_KEY = os.environ.get("FINNHUB_API_KEY", "")
 REVIEW_TYPE = os.environ.get("REVIEW_TYPE", "daily_prep")
@@ -19,7 +23,7 @@ PY_TO_HEB = {0: "שני", 1: "שלישי", 2: "רביעי", 3: "חמישי", 4: 
 # ══════════════════════════════════════════════════════════════
 # ACTIVE GEOPOLITICAL CONTEXT — edit this manually when reality changes.
 # Set to "" (empty string) to disable. The block is injected into every
-# prompt so Gemini stops softening "war" into "tensions".
+# prompt so the model stops softening "war" into "tensions".
 # Last edited: 2026-05-05
 # ══════════════════════════════════════════════════════════════
 ACTIVE_GEOPOLITICAL_CONTEXT = """
@@ -50,7 +54,7 @@ EXPECTED_FIRST_HEADING = {
 
 def build_expected_title(review_type, title_day_name, title_date_str, week_range=None, now_time=None):
     """Build the exact title string we expect the output to have.
-    This is enforced post-hoc in enforce_structure(), overriding whatever Gemini returned."""
+    This is enforced post-hoc in enforce_structure(), overriding whatever the model returned."""
     if review_type == "daily_prep":
         return f"נקודות חשובות לקראת פתיחת המסחר בוול סטריט 🇺🇸 – יום {title_day_name} {title_date_str}"
     elif review_type == "daily_summary":
@@ -590,9 +594,9 @@ def fetch_market_data(weekly=False):
     result_lines.extend([
         "",
         "The % changes above are ACCURATE — use them for direction and magnitude.",
-        "For exact index LEVELS (points), gold price ($/oz), oil price ($/barrel), VIX level, and Bitcoin price: ALWAYS use Google Search. Do NOT calculate or estimate them from ETF prices.",
+        "For exact index LEVELS (points), gold price ($/oz), oil price ($/barrel), VIX level, and Bitcoin price: ALWAYS use web search. Do NOT calculate or estimate them from ETF prices.",
         "For sector performance (XLE/XLK/XLF/XLY/XLV/XLI/XLP/XLU): USE ONLY the Finnhub numbers above. Do NOT invent sector percentages.",
-        "For 10-year Treasury yield: use Google Search to verify the current level — do NOT estimate from TLT price.",
+        "For 10-year Treasury yield: use web search to verify the current level — do NOT estimate from TLT price.",
         "If ANY percentage you write contradicts the data above, you are WRONG. Fix it.",
         "══════════════════════════════════════════════════════════════════════════════════════════\n"
     ])
@@ -669,11 +673,11 @@ def fetch_economic_data(days_back=1, days_forward=0):
         return ""
 
 def get_macro_checklist(review_type, date_str, week_range=None):
-    """Generate a mandatory checklist of macro data Gemini must search for."""
+    """Generate a mandatory checklist of macro data the model must search for."""
     if review_type == "daily_summary":
         return f"""
 ══ MANDATORY MACRO DATA CHECK ══
-You MUST use Google Search to find if ANY of these were released on {date_str}:
+You MUST use web search to find if ANY of these were released on {date_str}:
 - CPI (headline AND Core CPI separately)
 - PPI (headline AND Core PPI separately)
 - NFP (Non-Farm Payrolls)
@@ -689,7 +693,7 @@ If NONE were released today, skip this section — but you MUST check first.
     elif review_type == "weekly_summary":
         return f"""
 ══ MANDATORY MACRO DATA CHECK ══
-You MUST use Google Search to find ALL major US economic data released during the week of {week_range if week_range else date_str}.
+You MUST use web search to find ALL major US economic data released during the week of {week_range if week_range else date_str}.
 Specifically search for EACH of these:
 1. CPI — was it released this week? If yes: headline monthly %, headline annual %, Core CPI monthly %, Core CPI annual %, vs forecast. BOTH headline and core are mandatory.
 2. PPI — was it released this week? If yes: headline and core, monthly and annual, vs forecast.
@@ -707,7 +711,7 @@ Do NOT skip Core CPI if headline CPI was released — they are equally important
     elif review_type == "daily_prep":
         return f"""
 ══ SCHEDULED DATA CHECK ══
-Use Google Search to find what US economic data is scheduled for release on {date_str}.
+Use web search to find what US economic data is scheduled for release on {date_str}.
 Include the release time in Israel time and what the market consensus/forecast is.
 ══════════════════════════════════\n"""
     return ""
@@ -829,7 +833,7 @@ def fetch_tweets():
 # ══════════════════════════════════════════════════════════════
 
 def get_prior_review_context(review_type, data):
-    """Inject yesterday's/last week's review so Gemini doesn't repeat the same news.
+    """Inject yesterday's/last week's review so the model doesn't repeat the same news.
     This is the fix for: 'daily_prep keeps summarizing what was already in daily_summary'."""
     if review_type == "daily_prep":
         prior = data.get("dailySummary")
@@ -898,31 +902,31 @@ SHARED_RULES = (ACTIVE_GEOPOLITICAL_CONTEXT + "\n" if ACTIVE_GEOPOLITICAL_CONTEX
 
 CRITICAL — KEY MARKET DATA (MANDATORY VERIFICATION):
 - If VERIFIED MARKET DATA from Finnhub API is provided above the tweets, you MUST use those numbers for index performance (% change). Do NOT override them with numbers from tweets or from memory.
-- Use the verified % changes as-is. For exact index point levels, gold price, oil price, and VIX level: ALWAYS use Google Search. Do NOT calculate them from ETF prices.
-- You MUST verify via Google Search the current prices of: Brent crude oil, WTI crude oil, gold, and any other commodity you mention.
-- If a tweet states a price that seems extreme or unusual, you MUST verify it via Google Search before including it.
+- Use the verified % changes as-is. For exact index point levels, gold price, oil price, and VIX level: ALWAYS use web search. Do NOT calculate them from ETF prices.
+- You MUST verify via web search the current prices of: Brent crude oil, WTI crude oil, gold, and any other commodity you mention.
+- If a tweet states a price that seems extreme or unusual, you MUST verify it via web search before including it.
 - NEVER trust a single tweet for major price data. Always cross-reference.
 - Directional words are factual claims. Words like "צונח", "יורד", "נחלש", "מזנק", "עולה", "מטפס" MUST match the verified market-data direction block. If verified data says oil is up, do not write oil is falling, even if a tweet's wording suggests pressure.
 - NEVER write vague descriptions like "the market closed in green territory" or "mixed trading" without exact numbers.
-- NEVER claim an index or stock is at an "all-time high" (שיא / שיא כל הזמנים) unless you verify it via Google Search.
+- NEVER claim an index or stock is at an "all-time high" (שיא / שיא כל הזמנים) unless you verify it via web search.
 
 CRITICAL — SECTOR PERFORMANCE (NEW RULE):
 - For sector ETF performance (XLE/XLK/XLF/XLY/XLV/XLI/XLP/XLU), use ONLY the percentages provided in the Finnhub verified data above.
-- If the Finnhub data does not include a specific sector, do NOT invent a number. Either omit it or use Google Search to verify.
+- If the Finnhub data does not include a specific sector, do NOT invent a number. Either omit it or use web search to verify.
 - NEVER write a specific sector percentage without a source — this is a common hallucination.
 
 CRITICAL — MAJOR ECONOMIC DATA (DO NOT MISS):
-- Use Google Search to check if any major US economic data was released today: CPI, PPI, NFP, GDP, Jobless Claims, ISM PMI, Consumer Confidence, Retail Sales, FOMC minutes/decision.
+- Use web search to check if any major US economic data was released today: CPI, PPI, NFP, GDP, Jobless Claims, ISM PMI, Consumer Confidence, Retail Sales, FOMC minutes/decision.
 - If major data WAS released today, it MUST appear in the review — even if no tweet mentions it. This is non-negotiable.
 - CPI and NFP are the two most important data releases. Missing them from a daily review is a critical failure.
 - When CPI is mentioned, ALWAYS report BOTH headline CPI AND Core CPI (excluding food and energy).
 - When mentioning economic data, ALWAYS include: actual % (monthly AND annual), comparison to forecast, comparison to previous. Vague descriptions without numbers are unacceptable.
 
 CRITICAL — DATA ACCURACY:
-- EVERY number in the review must come from one of these sources: (1) Finnhub verified data above, (2) a specific tweet, or (3) Google Search verification.
+- EVERY number in the review must come from one of these sources: (1) Finnhub verified data above, (2) a specific tweet, or (3) web search verification.
 - NEVER invent, estimate, or recall prices from memory. If you cannot point to a source, do NOT include the number.
-- For the 10-year Treasury yield: verify via Google Search. Do NOT estimate from TLT.
-- For commodity absolute prices (oil $/barrel, gold $/oz): verify via Google Search — do NOT estimate from ETF prices.
+- For the 10-year Treasury yield: verify via web search. Do NOT estimate from TLT.
+- For commodity absolute prices (oil $/barrel, gold $/oz): verify via web search — do NOT estimate from ETF prices.
 - If a number from a tweet contradicts the Finnhub verified data, the Finnhub data is correct — the tweet is wrong.
 - Getting a number wrong destroys credibility. When in doubt, omit.
 
@@ -939,7 +943,7 @@ CRITICAL — FINANCIAL TERMINOLOGY:
   * נאסד"ק 100 (Nasdaq 100 / NDX) — 100 החברות הגדולות בבורסת נאסד"ק (ללא פיננסיים). QQQ עוקב אחרי מדד זה. רמה בסביבות 25,000-26,000 נקודות.
   * נאסד"ק קומפוזיט (Nasdaq Composite / IXIC) — כל החברות בבורסת נאסד"ק. רמה בסביבות 23,000-24,000 נקודות.
   * The Finnhub data uses QQQ which tracks the Nasdaq 100. When reporting QQQ % change, label it as "נאסד"ק 100" or "Nasdaq 100".
-  * If you report an index LEVEL (points), verify via Google Search which index the number belongs to. A level of ~24,000 is the Composite, not the 100. A level of ~25,500 is the 100, not the Composite.
+  * If you report an index LEVEL (points), verify via web search which index the number belongs to. A level of ~24,000 is the Composite, not the 100. A level of ~25,500 is the 100, not the Composite.
   * NEVER mix them — do not write "נאסד"ק 100" and then give the Composite level.
 
 CRITICAL — FACTUAL ACCURACY (ATTRIBUTION):
@@ -1191,7 +1195,7 @@ Rules:
 - Include 6-10 events sorted by date (earliest first).
 - Use Israel time (UTC+3) for all times.
 - If exact time is unknown, use 15:30 (US market open in Israel time) as default.
-- IMPORTANT: Cross-check each scheduled economic release against US market holidays. NFP on a market holiday (like Good Friday) is typically shifted — verify via Google Search if unsure.
+- IMPORTANT: Cross-check each scheduled economic release against US market holidays. NFP on a market holiday (like Good Friday) is typically shifted — verify with web search if unsure.
 - impact levels: "high" = moves entire market (Fed decision, NFP, CPI), "medium" = moves a sector (earnings, PMI), "low" = background data.
 
 {tweets_block}
@@ -1240,94 +1244,188 @@ Event types: macro data (NFP, CPI, PPI, PMI, GDP, jobless claims), Fed rate deci
     return ""
 
 # ══════════════════════════════════════════════════════════════
-# GEMINI CALL
+# OPENAI RESPONSES API CALLS
 # ══════════════════════════════════════════════════════════════
 
-def call_gemini(prompt, temperature=0.2):
-    """Lower default temperature (0.2 vs 0.7) for factual journalism.
-    Callers pass higher temperature for events calendar where mild variety is fine."""
+def _extract_openai_text(resp_data):
+    """Extract assistant text from a Responses API response.
+    Supports both the convenience `output_text` field and the structured `output[].content[]` shape."""
+    if not isinstance(resp_data, dict):
+        return ""
+
+    text = resp_data.get("output_text")
+    if isinstance(text, str) and text.strip():
+        return text
+
+    chunks = []
+    for item in resp_data.get("output", []) or []:
+        if not isinstance(item, dict):
+            continue
+        for content in item.get("content", []) or []:
+            if not isinstance(content, dict):
+                continue
+            if content.get("text"):
+                chunks.append(str(content["text"]))
+            elif content.get("type") == "output_text" and content.get("text"):
+                chunks.append(str(content["text"]))
+    return "\n".join(chunks).strip()
+
+
+def _extract_first_json_object(text):
+    """Strip markdown/citations and return the first complete JSON object string."""
+    if not isinstance(text, str):
+        raise json.JSONDecodeError("No text returned", "", 0)
+
+    text = text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+    if text.endswith("```"):
+        text = text[:-3]
+    text = text.strip()
+
+    text = re.sub(r'\s*\[\d+(?:,\s*\d+)*\]', '', text)
+
+    start = text.find('{')
+    if start < 0:
+        raise json.JSONDecodeError("No JSON object found", text, 0)
+
+    depth = 0
+    in_string = False
+    escape = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == '\\':
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == '{':
+            depth += 1
+        elif ch == '}':
+            depth -= 1
+            if depth == 0:
+                return text[start:i + 1]
+
+    raise json.JSONDecodeError("Unterminated JSON object", text, start)
+
+
+def _openai_payload(prompt, model, max_output_tokens=8192, use_web_search=False, require_web_search=False, reasoning_effort=None):
+    payload = {
+        "model": model,
+        "input": prompt,
+        "max_output_tokens": max_output_tokens,
+    }
+
+    effort = reasoning_effort if reasoning_effort is not None else OPENAI_REASONING_EFFORT
+    if effort:
+        payload["reasoning"] = {"effort": effort}
+
+    if use_web_search:
+        payload["tools"] = [{"type": "web_search", "search_context_size": "medium"}]
+        payload["tool_choice"] = "required" if require_web_search else "auto"
+
+    return payload
+
+
+def call_openai_text(prompt, model=None, max_output_tokens=8192, use_web_search=False,
+                     require_web_search=False, reasoning_effort=None, max_retries=3, label="OpenAI"):
+    """Call OpenAI Responses API and return raw assistant text."""
     import time
-    max_retries = 3
+    model = model or OPENAI_MODEL_MAIN
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
+    }
+
     for attempt in range(max_retries):
-        r = requests.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key={GEMINI_API_KEY}",
-            headers={"Content-Type": "application/json"},
-            json={
-                "contents": [{"parts": [{"text": prompt}]}],
-                "tools": [{"google_search": {}}],
-                "generationConfig": {
-                    "temperature": temperature,
-                    "maxOutputTokens": 8192
-                }
-            }
+        payload = _openai_payload(
+            prompt=prompt,
+            model=model,
+            max_output_tokens=max_output_tokens,
+            use_web_search=use_web_search,
+            require_web_search=require_web_search,
+            reasoning_effort=reasoning_effort,
         )
 
-        resp_data = r.json()
-        print(f"  Gemini status: {r.status_code} (attempt {attempt+1}/{max_retries}, temp={temperature})")
+        r = requests.post(OPENAI_API_URL, headers=headers, json=payload, timeout=180)
+        print(f"  {label} status: {r.status_code} (attempt {attempt+1}/{max_retries}, model={model}, web_search={use_web_search})")
 
-        if r.status_code == 503 or r.status_code == 429:
+        if r.status_code in (429, 500, 502, 503, 504):
             if attempt < max_retries - 1:
                 wait = 30 * (attempt + 1)
-                print(f"  Gemini overloaded, retrying in {wait}s...")
+                print(f"  {label} temporary error, retrying in {wait}s...")
                 time.sleep(wait)
                 continue
-            else:
-                print(f"  Gemini still unavailable after {max_retries} attempts")
-                raise Exception(f"Gemini returned {r.status_code} after {max_retries} retries")
+            raise Exception(f"{label} returned {r.status_code} after {max_retries} retries: {r.text[:500]}")
 
-        candidate = resp_data.get("candidates", [{}])[0]
-        content = candidate.get("content", {})
-        parts = content.get("parts", [])
+        if not r.ok:
+            raise Exception(f"{label} returned {r.status_code}: {r.text[:1000]}")
 
-        text = ""
-        for part in parts:
-            if "text" in part:
-                text = part["text"]
+        resp_data = r.json()
+        text = _extract_openai_text(resp_data)
+        if text:
+            return text
 
-        if not text:
-            if attempt < max_retries - 1:
-                print(f"  Gemini returned no text, retrying in 30s...")
-                time.sleep(30)
-                continue
-            print(f"  Gemini raw response: {str(resp_data)[:500]}")
-            raise Exception("Gemini returned no text")
+        if attempt < max_retries - 1:
+            print(f"  {label} returned no text, retrying in 30s...")
+            time.sleep(30)
+            continue
+        print(f"  {label} raw response: {str(resp_data)[:500]}")
+        raise Exception(f"{label} returned no text")
 
-        text = text.strip()
-        if text.startswith("```"):
-            text = text.split("\n", 1)[1] if "\n" in text else text[3:]
-        if text.endswith("```"):
-            text = text[:-3]
-        text = text.strip()
+    raise Exception(f"{label}: exhausted all retries")
 
-        text = re.sub(r'\s*\[\d+(?:,\s*\d+)*\]', '', text)
 
-        start = text.find('{')
-        if start >= 0:
-            depth = 0
-            end = start
-            for i in range(start, len(text)):
-                if text[i] == '{':
-                    depth += 1
-                elif text[i] == '}':
-                    depth -= 1
-                    if depth == 0:
-                        end = i + 1
-                        break
-            text = text[start:end]
-
+def call_openai_json(prompt, model=None, max_output_tokens=8192, use_web_search=False,
+                     require_web_search=False, reasoning_effort=None, max_retries=3, label="OpenAI"):
+    """Call OpenAI and parse the first JSON object returned by the model."""
+    import time
+    for attempt in range(max_retries):
+        text = call_openai_text(
+            prompt,
+            model=model,
+            max_output_tokens=max_output_tokens,
+            use_web_search=use_web_search,
+            require_web_search=require_web_search,
+            reasoning_effort=reasoning_effort,
+            max_retries=1,
+            label=label,
+        )
+        json_text = _extract_first_json_object(text)
         try:
-            return json.loads(text)
+            return json.loads(json_text)
         except json.JSONDecodeError as e:
             print(f"  JSON parse error: {e}")
-            print(f"  Raw text (first 200 chars): {text[:200]}")
-            print(f"  Raw text (last 300 chars): ...{text[-300:]}")
+            print(f"  Raw text (first 200 chars): {json_text[:200]}")
+            print(f"  Raw text (last 300 chars): ...{json_text[-300:]}")
             if attempt < max_retries - 1:
-                print(f"  Retrying due to JSON error in 30s...")
+                print("  Retrying due to JSON error in 30s...")
                 time.sleep(30)
                 continue
             raise
 
-    raise Exception("call_gemini: exhausted all retries")
+    raise Exception(f"{label}: exhausted all JSON retries")
+
+
+def call_openai(prompt, temperature=0.2):
+    """Main review generation.
+    `temperature` is accepted for backward compatibility with existing callers, but the
+    Responses API payload intentionally omits it for GPT-5 class models."""
+    return call_openai_json(
+        prompt,
+        model=OPENAI_MODEL_MAIN,
+        max_output_tokens=8192,
+        use_web_search=True,
+        require_web_search=True,
+        reasoning_effort=OPENAI_REASONING_EFFORT,
+        max_retries=3,
+        label="OpenAI main review",
+    )
 
 # ══════════════════════════════════════════════════════════════
 # POST-PROCESSING — STRUCTURE ENFORCEMENT (NEW)
@@ -1396,7 +1494,7 @@ def debullet(text):
     return " ".join(cleaned)
 
 def enforce_structure(result, review_type, expected_title):
-    """Force the Gemini output to match the structure expected by the HTML renderer.
+    """Force the model output to match the structure expected by the HTML renderer.
     All review pages now use one section only. A dedicated 'שורה תחתונה' section is dropped."""
 
     if not isinstance(result, dict):
@@ -1439,7 +1537,7 @@ def enforce_structure(result, review_type, expected_title):
             merged_parts.append(str(c).strip())
 
     if not merged_parts:
-        # Safety: if Gemini returned only a bottom-line section, keep its content but under the main heading
+        # Safety: if the model returned only a bottom-line section, keep its content but under the main heading
         for s in sections:
             c = s.get("content", "")
             if isinstance(c, list):
@@ -1673,7 +1771,7 @@ def build_source_bundle(market_data, tweets, prior_context):
 def number_provenance_check(result, source_bundle, review_type):
     """Scan the generated review for numeric claims that don't trace to any source.
     Phase 1: informational warnings only — logs suspicious numbers to stdout, returns
-    result unchanged. Drops are handled by fact_check_with_gemini downstream.
+    result unchanged. Drops are handled by fact_check_with_openai downstream.
 
     This catches hallucinations like 'ADP weekly 54.75K' that pass earlier layers because
     they're internally consistent but absent from Finnhub/econ_calendar/tweets."""
@@ -1787,7 +1885,7 @@ def number_provenance_check(result, source_bundle, review_type):
 
 # ══════════════════════════════════════════════════════════════
 # EDITORIAL PRE-FLIGHT (NEW — closes the "missing big story" gap)
-# Runs BEFORE the main review prompt. Asks Gemini Flash to identify the top
+# Runs BEFORE the main review prompt. Asks the OpenAI fast model to identify the top
 # 5-7 stories from the tweet pool, with the cannot-miss aspect of each.
 # The result is injected into the main prompt as a MUST-INCLUDE checklist.
 #
@@ -1844,61 +1942,22 @@ TWEETS:
 Return ONLY the JSON object."""
 
     try:
-        r = requests.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}",
-            headers={"Content-Type": "application/json"},
-            json={
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {"temperature": 0.2, "maxOutputTokens": 2048}
-            },
-            timeout=60
+        parsed = call_openai_json(
+            prompt,
+            model=OPENAI_MODEL_FAST,
+            max_output_tokens=2048,
+            use_web_search=False,
+            require_web_search=False,
+            reasoning_effort="none",
+            max_retries=2,
+            label="OpenAI editorial pre-flight",
         )
-        if not r.ok:
-            print(f"  Pre-flight Gemini status {r.status_code}, skipping")
-            return ""
-
-        resp_data = r.json()
-        candidate = resp_data.get("candidates", [{}])[0]
-        parts = candidate.get("content", {}).get("parts", [])
-        text = ""
-        for part in parts:
-            if "text" in part:
-                text = part["text"]
-
-        if not text:
-            print("  Pre-flight returned no text, skipping")
-            return ""
-
-        text = text.strip()
-        if text.startswith("```"):
-            text = text.split("\n", 1)[1] if "\n" in text else text[3:]
-        if text.endswith("```"):
-            text = text[:-3]
-        text = text.strip()
-
-        # Extract the first complete JSON object
-        start = text.find('{')
-        if start >= 0:
-            depth = 0
-            end = start
-            for i in range(start, len(text)):
-                if text[i] == '{':
-                    depth += 1
-                elif text[i] == '}':
-                    depth -= 1
-                    if depth == 0:
-                        end = i + 1
-                        break
-            text = text[start:end]
-
-        parsed = json.loads(text)
         stories = parsed.get("stories", [])
 
         if not stories or not isinstance(stories, list):
             print("  Pre-flight returned no usable stories, skipping")
             return ""
 
-        # Trim to 7 max, build the prompt block
         stories = stories[:7]
         lines = [
             "",
@@ -1923,33 +1982,23 @@ Return ONLY the JSON object."""
 
         block = "\n".join(lines)
         print(f"  ✅ Pre-flight identified {len(stories)} top stories")
-        for s in stories[:3]:
-            print(f"     #{s.get('rank', '?')}: {s.get('headline', '')[:80]}")
         return block
 
-    except json.JSONDecodeError as e:
-        print(f"  Pre-flight JSON parse error: {e}, skipping")
-        return ""
     except Exception as e:
-        print(f"  Pre-flight failed: {e}, skipping")
+        print(f"  Pre-flight failed, skipping: {e}")
         return ""
 
 
-# ══════════════════════════════════════════════════════════════
-# FACT-CHECKER
-# ══════════════════════════════════════════════════════════════
 
-def fact_check_with_gemini(result, market_data, review_type, provenance_warnings=None, ticker_warnings=None):
-    """Flash-based fact check. Runs AFTER enforce_structure so the structure it sees is already correct.
+def fact_check_with_openai(result, market_data, review_type, provenance_warnings=None, ticker_warnings=None):
+    """Fast-model fact check. Runs AFTER enforce_structure so the structure it sees is already correct.
     If provenance_warnings is provided, the fact-checker is instructed to remove bullets whose
     numbers cannot be verified against sources.
     If ticker_warnings is provided, the fact-checker is instructed to fix or remove bullets
     whose directional claim about a ticker contradicts the Finnhub quote."""
-    # Strip internal metadata before serializing for the model
     clean_result = {k: v for k, v in result.items() if not k.startswith("_")}
     review_json = json.dumps(clean_result, ensure_ascii=False, indent=2)
 
-    # Build the provenance block for the fact-checker prompt
     provenance_block = ""
     if provenance_warnings:
         lines = ["\nPROVENANCE WARNINGS — these numbers from the review were NOT found in any source:"]
@@ -1958,16 +2007,13 @@ def fact_check_with_gemini(result, market_data, review_type, provenance_warnings
         lines.append("\nFor each warning above: either (a) the number is correct and you can verify it via your own knowledge — keep the bullet; or (b) the number is a hallucination — REMOVE the entire bullet containing that number from the content. Do NOT just silently fix the number to something else — if it can't be verified, remove the claim.")
         provenance_block = "\n".join(lines)
 
-    # Build the ticker direction block — these are sign-flip errors caught by Finnhub
     ticker_block = ""
     if ticker_warnings:
         high_sev = [w for w in ticker_warnings if w.get("severity") == "high"]
         if high_sev:
             lines = ["\nTICKER DIRECTION CONTRADICTIONS — these bullets claim a price direction that CONTRADICTS the verified Finnhub quote:"]
             for w in high_sev[:10]:
-                lines.append(
-                    f"- ${w['ticker']}: bullet claims '{w['claimed']}' but Finnhub shows {w['actual']} ({w['actual_dir']})."
-                )
+                lines.append(f"- ${w['ticker']}: bullet claims '{w['claimed']}' but Finnhub shows {w['actual']} ({w['actual_dir']}).")
                 lines.append(f"  Offending bullet: {w['bullet'][:300]}")
             lines.append("")
             lines.append("FIX RULE for each contradiction above:")
@@ -2019,55 +2065,16 @@ COMMON ERRORS TO CATCH:
 OUTPUT: Return the corrected review as valid JSON in EXACTLY the same structure (same title, same section headings, same number of sections — for live_news that means exactly 1 section, for others exactly 2). No backticks, no explanations — pure JSON only."""
 
     try:
-        r = requests.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}",
-            headers={"Content-Type": "application/json"},
-            json={
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {"temperature": 0.1, "maxOutputTokens": 8192}
-            },
-            timeout=120
+        checked = call_openai_json(
+            prompt,
+            model=OPENAI_MODEL_FAST,
+            max_output_tokens=8192,
+            use_web_search=False,
+            require_web_search=False,
+            reasoning_effort="low",
+            max_retries=2,
+            label="OpenAI fact-checker",
         )
-        if not r.ok:
-            print(f"  Fact-check Gemini returned status {r.status_code}, skipping")
-            return result
-
-        resp_data = r.json()
-        candidate = resp_data.get("candidates", [{}])[0]
-        parts = candidate.get("content", {}).get("parts", [])
-        text = ""
-        for part in parts:
-            if "text" in part:
-                text = part["text"]
-
-        if not text:
-            print("  Fact-check returned no text, skipping")
-            return result
-
-        text = text.strip()
-        if text.startswith("```"):
-            text = text.split("\n", 1)[1] if "\n" in text else text[3:]
-        if text.endswith("```"):
-            text = text[:-3]
-        text = text.strip()
-
-        text = re.sub(r'\s*\[\d+(?:,\s*\d+)*\]', '', text)
-
-        start = text.find('{')
-        if start >= 0:
-            depth = 0
-            end = start
-            for i in range(start, len(text)):
-                if text[i] == '{':
-                    depth += 1
-                elif text[i] == '}':
-                    depth -= 1
-                    if depth == 0:
-                        end = i + 1
-                        break
-            text = text[start:end]
-
-        checked = json.loads(text)
 
         if "sections" in result and "sections" not in checked:
             print("  Fact-check broke JSON structure, skipping")
@@ -2138,7 +2145,7 @@ def main():
     print(f"  Title date: {title_date_str} ({title_day_name}), week_range: {week_range}")
 
     # Compute the canonical "review date" that will be forced onto result["date"].
-    # Gemini hallucinates dates (e.g. weekly_summary date showing 5/9/2026 in the future).
+    # The model may hallucinate dates (e.g. weekly_summary date showing 5/9/2026 in the future).
     # We override deterministically based on the review type.
     if REVIEW_TYPE in ("daily_prep", "daily_summary"):
         review_date = title_date_str  # the trading day this review is about
@@ -2234,7 +2241,7 @@ def main():
 
     # Temperature: 0.2 for factual journalism, 0.4 for events (allow mild variety)
     gen_temp = 0.4 if REVIEW_TYPE == "events" else 0.2
-    result = call_gemini(prompt, temperature=gen_temp)
+    result = call_openai(prompt, temperature=gen_temp)
 
     # Layer 1: Regex-based auto-fix (instant, deterministic)
     print("\n── Layer 1: Regex validation ──")
@@ -2263,9 +2270,9 @@ def main():
         print("  No tickers mentioned (or all excluded) — skipping per-ticker check")
     ticker_warnings = result.pop("_ticker_warnings", None)
 
-    # Layer 4: Gemini Flash fact-checker — uses provenance + ticker warnings to fix or drop bullets
-    print("\n── Layer 4: Gemini fact-checker ──")
-    result = fact_check_with_gemini(result, market_data, REVIEW_TYPE,
+    # Layer 4: OpenAI fast-model fact-checker — uses provenance + ticker warnings to fix or drop bullets
+    print("\n── Layer 4: OpenAI fact-checker ──")
+    result = fact_check_with_openai(result, market_data, REVIEW_TYPE,
                                      provenance_warnings=provenance_warnings,
                                      ticker_warnings=ticker_warnings)
 
@@ -2308,7 +2315,7 @@ def main():
         else:
             print(f"  Warning: no 'items' key. Keys: {list(result.keys())}")
     elif REVIEW_TYPE in key_map:
-        # Force the canonical date — Gemini sometimes writes nonsense dates
+        # Force the canonical date — The model sometimes writes nonsense dates
         # (e.g. weekly_summary returning 2026-09-05 when the week ended 2026-05-08).
         original_date = result.get("date", "")
         if original_date != review_date:
