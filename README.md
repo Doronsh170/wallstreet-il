@@ -25,7 +25,7 @@
 ## איך זה עובד?
 
 1. שליפת פוסטים ממקורות פיננסיים מובילים ב-X (Twitter)
-2. ניתוח וכתיבה באמצעות Gemini AI עם Google Search
+2. ניתוח וכתיבה באמצעות OpenAI Responses API עם Web Search
 3. פרסום אוטומטי לאתר דרך GitHub Pages
 
  
@@ -41,3 +41,28 @@
 פותח ע״י [דורון שרייבמן](https://www.linkedin.com/in/doron-sheribman/)
 
 </div>
+
+
+## מעבר ל-OpenAI
+
+המערכת משתמשת ב-OpenAI Responses API. יש להגדיר ב-GitHub Secrets:
+
+- `OPENAI_API_KEY`
+- `TWITTER_API_KEY`
+- `FINNHUB_API_KEY`
+
+ברירת מחדל למודלים בקוד:
+
+- סקירה ראשית: `gpt-5.4`
+- בדיקות קצרות / fact-check: `gpt-5.4-mini`
+
+אפשר לשנות בלי לערוך קוד באמצעות משתני סביבה אופציונליים:
+
+- `OPENAI_MODEL_MAIN`
+- `OPENAI_MODEL_FAST`
+- `OPENAI_REASONING_EFFORT`
+
+
+## תיקון ויזואלי
+
+החבילה מנקה קישורי מקור מתוך גוף הסקירה ומאפשרת שבירת כרטיס התוכן ב-PDF כדי למנוע עמוד ראשון ריק.

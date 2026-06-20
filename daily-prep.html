@@ -63,9 +63,9 @@
       h1 span { font-size: 30px !important; }
       #pageDate { text-align: center !important; color: #64748b !important; font-size: 14px !important; margin-top: 4px !important; }
       #contentArea { display: block !important; }
-      .content-area { background: #fff !important; border: 1px solid #e2e5ec !important; border-radius: 12px !important; box-shadow: none !important; padding: 22px 26px !important; margin: 0 0 18px !important; page-break-inside: avoid; }
+      .content-area { background: #fff !important; border: 1px solid #e2e5ec !important; border-radius: 12px !important; box-shadow: none !important; padding: 22px 26px !important; margin: 0 0 18px !important; break-inside: auto; page-break-inside: auto; }
       .content-area h2 { color: #9a7b2d !important; font-size: 18px !important; line-height: 1.35 !important; margin-bottom: 16px !important; text-align: right !important; }
-      .content-area li { color: #334155 !important; font-size: 16px !important; line-height: 1.9 !important; margin-bottom: 10px !important; padding-right: 18px !important; }
+      .content-area li { break-inside: avoid; page-break-inside: avoid; color: #334155 !important; font-size: 16px !important; line-height: 1.9 !important; margin-bottom: 10px !important; padding-right: 18px !important; }
       .content-area li::before { color: #9a7b2d !important; font-size: 1.1em !important; right: 0 !important; }
       .content-area p { color: #334155 !important; font-size: 16px !important; line-height: 1.9 !important; }
       .bottom-line { background: #fff !important; border-right: 1px solid #e2e5ec !important; }
@@ -182,13 +182,38 @@
         document.getElementById('pageDate').textContent = section.title;
 
         const st = getMarketStatus(holidays);
-        if (st === 'closed') document.getElementById('noTradeWarning').classList.remove('hidden');
-        if (st === 'afterhours') document.getElementById('timeWarning').classList.remove('hidden');
+        const todayIL = nowInIsrael().toISOString().split('T')[0];
+        const reviewDate = section.date || '';
+        if (st === 'closed' && reviewDate === todayIL) document.getElementById('noTradeWarning').classList.remove('hidden');
+        if (st === 'afterhours' && reviewDate === todayIL) document.getElementById('timeWarning').classList.remove('hidden');
 
         const area = document.getElementById('contentArea');
 
+
+        function stripReviewLinks(text) {
+          if (Array.isArray(text)) text = text.join('\n');
+          return String(text || '')
+            .replace(/\s*\(\s*\[[^\]\n]+\]\(https?:\/\/[^)]+\)\s*\)/g, '')
+            .replace(/\s*\[[^\]\n]+\]\(https?:\/\/[^)]+\)/g, '')
+            .replace(/\s*\(?https?:\/\/\S+/g, '')
+            .replace(/\s*\(?utm_source=openai\)?/g, '')
+            .replace(/\s*\(\s*\)/g, '')
+            .replace(/\s{2,}/g, ' ')
+            .trim();
+        }
+
+        function escapeHTML(value) {
+          return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+        }
+
         function formatContent(text) {
           if (Array.isArray(text)) text = text.join('\n');
+          text = stripReviewLinks(text);
           const lines = text.split('\n').filter(l => l.trim());
           const bullets = [];
           const nonBullets = [];
@@ -201,9 +226,9 @@
             }
           });
           let html = '';
-          if (nonBullets.length) html += `<p class="text-wall-700 leading-relaxed mb-2">${nonBullets.join('<br>')}</p>`;
-          if (bullets.length) html += `<ul>${bullets.map(b => `<li>${b}</li>`).join('')}</ul>`;
-          if (!html) html = `<p class="text-wall-700 leading-relaxed">${text}</p>`;
+          if (nonBullets.length) html += `<p class="text-wall-700 leading-relaxed mb-2">${nonBullets.map(escapeHTML).join('<br>')}</p>`;
+          if (bullets.length) html += `<ul>${bullets.map(b => `<li>${escapeHTML(b)}</li>`).join('')}</ul>`;
+          if (!html) html = `<p class="text-wall-700 leading-relaxed">${escapeHTML(text)}</p>`;
           return html;
         }
 
@@ -217,7 +242,6 @@
         }).join('');
 
         document.getElementById('shareButtons').classList.remove('hidden');
-        if (isVisualMode()) ensurePdfDisclaimer();
 
       } catch(e) { console.error(e); }
     }

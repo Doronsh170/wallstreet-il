@@ -44,9 +44,9 @@
       h1 span { font-size: 30px !important; }
       #pageDate { text-align: center !important; color: #64748b !important; font-size: 14px !important; margin-top: 4px !important; }
       #contentArea { display: block !important; }
-      .content-area { background: #fff !important; border: 1px solid #e2e5ec !important; border-radius: 12px !important; box-shadow: none !important; padding: 22px 26px !important; margin: 0 0 18px !important; page-break-inside: avoid; }
+      .content-area { background: #fff !important; border: 1px solid #e2e5ec !important; border-radius: 12px !important; box-shadow: none !important; padding: 22px 26px !important; margin: 0 0 18px !important; break-inside: auto; page-break-inside: auto; }
       .content-area h2 { color: #9a7b2d !important; font-size: 18px !important; line-height: 1.35 !important; margin-bottom: 16px !important; text-align: right !important; }
-      .content-area li { color: #334155 !important; font-size: 16px !important; line-height: 1.9 !important; margin-bottom: 10px !important; padding-right: 18px !important; }
+      .content-area li { break-inside: avoid; page-break-inside: avoid; color: #334155 !important; font-size: 16px !important; line-height: 1.9 !important; margin-bottom: 10px !important; padding-right: 18px !important; }
       .content-area li::before { color: #9a7b2d !important; font-size: 1.1em !important; right: 0 !important; }
       .content-area p { color: #334155 !important; font-size: 16px !important; line-height: 1.9 !important; }
       .bottom-line { background: #fff !important; border-right: 1px solid #e2e5ec !important; }
@@ -84,8 +84,40 @@
     const ISRAEL_TZ='Asia/Jerusalem';function nowInIsrael(){return new Date(new Date().toLocaleString('en-US',{timeZone:ISRAEL_TZ}));}function updateClock(){const n=nowInIsrael();document.getElementById('clockBar').textContent=`${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}:${String(n.getSeconds()).padStart(2,'0')} IL`;}function getMarketStatus(holidays){const now=nowInIsrael(),day=now.getDay(),t=now.getHours()*60+now.getMinutes(),ds=now.toISOString().split('T')[0];if(day===6||day===0||(holidays||[]).includes(ds))return'closed';if(t>=16*60+30&&t<23*60)return'open';if(t>=23*60)return'afterhours';return'premarket';}function updateStatusBar(holidays){const st=getMarketStatus(holidays);const map={closed:{c:'bg-wall-red',t:'השוק סגור'},open:{c:'bg-wall-green',t:'השוק פתוח'},afterhours:{c:'bg-wall-gold',t:'After Hours'},premarket:{c:'bg-wall-gold',t:'פרה-מרקט'}};const s=map[st]||map.premarket;document.getElementById('marketStatusBar').innerHTML=`<span class="pulse-dot w-2 h-2 rounded-full ${s.c} inline-block"></span><span>${s.t}</span>`;}
     async function init(){try{const resp=await fetch('data.json?_='+Date.now());const data=await resp.json();updateStatusBar(data.marketStatus?.usHolidays2026||[]);const section=data.weeklyPrep;if(!section){document.getElementById('contentArea').innerHTML='<p class="text-wall-400">אין נתונים זמינים.</p>';return;}document.getElementById('pageDate').textContent=section.title;
 
+
+        function stripReviewLinks(text) {
+          if (Array.isArray(text)) text = text.join('\n');
+          return String(text || '')
+            // Remove normal Markdown links: ([source](https://...)) or [source](https://...)
+            .replace(/\s*\(?\s*\[[^\]\n]{1,120}\]\s*\(\s*https?:\/\/[\s\S]*?\)\s*\)?/g, '')
+            // Remove broken Markdown links split across lines: [source]\nhttps://...
+            .replace(/\s*\(?\s*\[[^\]\n]{1,120}\]\s*[\r\n]+\s*https?:\/\/\S+\s*\)?/g, '')
+            // Remove any raw URL that survived
+            .replace(/\s*\(?https?:\/\/\S+/g, '')
+            // Remove OpenAI tracking fragments if a URL was split
+            .replace(/\s*\(?utm_source=openai\)?/g, '')
+            // Remove remaining source-domain brackets such as [kiplinger.com]
+            .replace(/\s*\(?\[[A-Za-z0-9 ._-]+\.(?:com|org|net|io|co|gov|edu|finance)[^\]\n]*\]\)?/g, '')
+            // Clean empty parentheses and repeated whitespace
+            .replace(/\s*[()]{2,}\s*/g, ' ')
+            .replace(/\s*\(\s*\)/g, '')
+            .replace(/[ \t]{2,}/g, ' ')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+        }
+
+        function escapeHTML(value) {
+          return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+        }
+
         function formatContent(text) {
           if (Array.isArray(text)) text = text.join('\n');
+          text = stripReviewLinks(text);
           const lines = text.split('\n').filter(l => l.trim());
           const bullets = [];
           const nonBullets = [];
@@ -98,17 +130,16 @@
             }
           });
           let html = '';
-          if (nonBullets.length) html += '<p class="text-wall-700 leading-relaxed mb-2">' + nonBullets.join('<br>') + '</p>';
-          if (bullets.length) html += '<ul>' + bullets.map(b => '<li>' + b + '</li>').join('') + '</ul>';
-          if (!html) html = '<p class="text-wall-700 leading-relaxed">' + text + '</p>';
+          if (nonBullets.length) html += '<p class="text-wall-700 leading-relaxed mb-2">' + nonBullets.map(escapeHTML).join('<br>') + '</p>';
+          if (bullets.length) html += '<ul>' + bullets.map(b => '<li>' + escapeHTML(b) + '</li>').join('') + '</ul>';
+          if (!html) html = '<p class="text-wall-700 leading-relaxed">' + escapeHTML(text) + '</p>';
           return html;
         }
 
         document.getElementById('contentArea').innerHTML=section.sections.map(s=>{
           const isBottomLine = s.heading === 'שורה תחתונה';
           return '<div class="' + (isBottomLine ? 'bottom-line' : 'bg-white') + ' border border-wall-200 rounded-xl p-5 shadow-sm content-area"><h2 class="font-heading font-bold ' + (isBottomLine ? 'text-wall-900' : 'text-wall-gold') + ' mb-3">' + (isBottomLine ? '📌 ' : '') + s.heading + '</h2>' + formatContent(s.content) + '</div>';
-        }).join('');document.getElementById('updateNotice').classList.remove('hidden');document.getElementById('shareButtons').classList.remove('hidden');
-        if (isVisualMode()) ensurePdfDisclaimer();}catch(e){console.error(e);}}
+        }).join('');document.getElementById('updateNotice').classList.remove('hidden');document.getElementById('shareButtons').classList.remove('hidden');}catch(e){console.error(e);}}
 
     function getReviewText(shortVersion) {
       const title = document.getElementById('pageDate').textContent;
