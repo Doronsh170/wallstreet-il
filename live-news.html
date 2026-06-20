@@ -7,7 +7,53 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&family=Rubik:wght@400;500;700&display=swap" rel="stylesheet">
   <script>tailwind.config={theme:{extend:{colors:{wall:{50:'#f7f8fc',100:'#eef0f6',200:'#e2e5ec',300:'#cbd0db',400:'#94a3b8',500:'#64748b',600:'#475569',700:'#334155',800:'#1e293b',900:'#0f172a',gold:'#9a7b2d',goldLight:'#b8942f',goldBg:'#fdf8ed',goldBorder:'#e8d5a0',green:'#16a34a',greenBg:'#ecfdf5',red:'#dc2626',redBg:'#fef2f2',navy:'#1a2332'}},fontFamily:{body:['Heebo','sans-serif'],heading:['Rubik','sans-serif']}}}}</script>
-  <style>body{font-family:'Heebo',sans-serif;background:#f0f2f7}.pulse-dot{animation:pulse 2s ease-in-out infinite}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}.fade-in{animation:fadeIn .6s ease-out}@keyframes fadeIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}.content-area ul{list-style:none;padding:0;margin:0}.content-area li{position:relative;padding-right:18px;margin-bottom:8px;line-height:1.7}.content-area li::before{content:"•";position:absolute;right:0;top:0;color:#9a7b2d;font-weight:bold;font-size:1.1em}.bottom-line{background:linear-gradient(135deg,#fdf8ed 0%,#f7f8fc 100%);border-right:4px solid #9a7b2d}.share-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;transition:all 0.2s;border:1px solid #e2e5ec}.share-btn:hover{transform:translateY(-1px);box-shadow:0 2px 8px rgba(0,0,0,0.1)}.share-btn-whatsapp{background:#25D366;color:white;border-color:#25D366}.share-btn-whatsapp:hover{background:#1da851}.share-btn-pdf{background:white;color:#334155}.share-btn-pdf:hover{background:#f7f8fc}@media print{.bg-wall-navy,header,footer,nav,.share-buttons,#updateNotice,.text-wall-400.border-t{display:none!important}body{background:white!important}main{padding:0!important}}</style>
+  <style>body{font-family:'Heebo',sans-serif;background:#f0f2f7}.pulse-dot{animation:pulse 2s ease-in-out infinite}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}.fade-in{animation:fadeIn .6s ease-out}@keyframes fadeIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}.content-area ul{list-style:none;padding:0;margin:0}.content-area li{position:relative;padding-right:18px;margin-bottom:8px;line-height:1.7}.content-area li::before{content:"•";position:absolute;right:0;top:0;color:#9a7b2d;font-weight:bold;font-size:1.1em}.bottom-line{background:linear-gradient(135deg,#fdf8ed 0%,#f7f8fc 100%);border-right:4px solid #9a7b2d}.share-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;transition:all 0.2s;border:1px solid #e2e5ec}.share-btn:hover{transform:translateY(-1px);box-shadow:0 2px 8px rgba(0,0,0,0.1)}.share-btn-whatsapp{background:#25D366;color:white;border-color:#25D366}.share-btn-whatsapp:hover{background:#1da851}.share-btn-pdf{background:white;color:#334155}.share-btn-pdf:hover{background:#f7f8fc}
+    /* Visual review mode: clean one-page look matching the uploaded example. */
+    .visual-review-mode { background: #fff !important; color: #334155 !important; }
+    .visual-review-mode .bg-wall-navy,
+    .visual-review-mode header,
+    .visual-review-mode footer,
+    .visual-review-mode nav,
+    .visual-review-mode .share-buttons,
+    .visual-review-mode #timeWarning,
+    .visual-review-mode #noTradeWarning,
+    .visual-review-mode #updateNotice,
+    .visual-review-mode .text-wall-400.border-t { display: none !important; }
+    .visual-review-mode main { max-width: 760px !important; margin: 0 auto !important; padding: 18px 16px 14px !important; }
+    .visual-review-mode main > .mb-6 { margin-bottom: 22px !important; }
+    .visual-review-mode h1 { justify-content: flex-start !important; gap: 10px !important; font-size: 28px !important; line-height: 1.25 !important; color: #111827 !important; }
+    .visual-review-mode h1 span { font-size: 30px !important; }
+    .visual-review-mode #pageDate { text-align: center !important; color: #64748b !important; font-size: 14px !important; margin-top: 4px !important; }
+    .visual-review-mode #contentArea { display: block !important; }
+    .visual-review-mode .content-area { background: #fff !important; border: 1px solid #e2e5ec !important; border-radius: 12px !important; box-shadow: none !important; padding: 22px 26px !important; margin: 0 0 18px !important; }
+    .visual-review-mode .content-area h2 { color: #9a7b2d !important; font-size: 18px !important; line-height: 1.35 !important; margin-bottom: 16px !important; text-align: right !important; }
+    .visual-review-mode .content-area ul { list-style: none !important; padding: 0 !important; margin: 0 !important; }
+    .visual-review-mode .content-area li { color: #334155 !important; font-size: 16px !important; line-height: 1.9 !important; margin-bottom: 10px !important; padding-right: 18px !important; }
+    .visual-review-mode .content-area li::before { color: #9a7b2d !important; font-size: 1.1em !important; right: 0 !important; }
+    .visual-review-mode .content-area p { color: #334155 !important; font-size: 16px !important; line-height: 1.9 !important; }
+    .visual-review-mode .bottom-line { background: #fff !important; border-right: 1px solid #e2e5ec !important; }
+    .visual-review-mode #pdfDisclaimer { display: block !important; margin-top: 20px !important; padding: 12px 0 0 !important; border-top: 1px solid #e2e5ec !important; font-size: 11px !important; color: #64748b !important; text-align: center !important; }
+    @page { size: A4 portrait; margin: 10mm; }
+    @media print {
+      html, body { width: 100% !important; background: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .bg-wall-navy, header, footer, nav, .share-buttons, #timeWarning, #noTradeWarning, #updateNotice, .text-wall-400.border-t { display: none !important; }
+      body { background: #fff !important; color: #334155 !important; }
+      main { max-width: 760px !important; margin: 0 auto !important; padding: 0 !important; }
+      main > .mb-6 { margin-bottom: 22px !important; }
+      h1 { justify-content: flex-start !important; gap: 10px !important; font-size: 28px !important; line-height: 1.25 !important; color: #111827 !important; }
+      h1 span { font-size: 30px !important; }
+      #pageDate { text-align: center !important; color: #64748b !important; font-size: 14px !important; margin-top: 4px !important; }
+      #contentArea { display: block !important; }
+      .content-area { background: #fff !important; border: 1px solid #e2e5ec !important; border-radius: 12px !important; box-shadow: none !important; padding: 22px 26px !important; margin: 0 0 18px !important; page-break-inside: avoid; }
+      .content-area h2 { color: #9a7b2d !important; font-size: 18px !important; line-height: 1.35 !important; margin-bottom: 16px !important; text-align: right !important; }
+      .content-area li { color: #334155 !important; font-size: 16px !important; line-height: 1.9 !important; margin-bottom: 10px !important; padding-right: 18px !important; }
+      .content-area li::before { color: #9a7b2d !important; font-size: 1.1em !important; right: 0 !important; }
+      .content-area p { color: #334155 !important; font-size: 16px !important; line-height: 1.9 !important; }
+      .bottom-line { background: #fff !important; border-right: 1px solid #e2e5ec !important; }
+      #pdfDisclaimer { display: block !important; margin-top: 20px !important; padding: 12px 0 0 !important; border-top: 1px solid #e2e5ec !important; font-size: 11px !important; color: #64748b !important; text-align: center !important; }
+    }
+
+  </style>
 </head>
 <body class="min-h-screen text-wall-800">
   <div class="bg-wall-navy"><div class="max-w-6xl mx-auto px-4 py-2 flex items-center justify-between text-xs text-gray-300"><div id="marketStatusBar" class="flex items-center gap-2"><span class="pulse-dot w-2 h-2 rounded-full bg-gray-400 inline-block"></span><span>טוען...</span></div><div id="clockBar" class="font-mono"></div></div></div>
@@ -21,6 +67,7 @@
     <div id="contentArea" class="space-y-4"></div>
     <div id="shareButtons" class="hidden share-buttons flex items-center gap-3 mt-6 mb-6">
       <button onclick="shareWhatsApp()" class="share-btn share-btn-whatsapp">📱 שלח בוואטסאפ</button>
+      <button onclick="openVisualReview()" class="share-btn share-btn-pdf">🖼️ סקירה ויזואלית</button>
       <button onclick="exportPDF()" class="share-btn share-btn-pdf">📄 שמור PDF</button>
     </div>
     <div id="updateNotice" class="hidden bg-wall-100 border border-wall-200 rounded-xl p-3 mt-4 text-center">
@@ -60,7 +107,8 @@
         document.getElementById('contentArea').innerHTML=section.sections.map(s=>{
           const isBottomLine = s.heading === 'שורה תחתונה';
           return '<div class="' + (isBottomLine ? 'bottom-line' : 'bg-white') + ' border border-wall-200 rounded-xl p-5 shadow-sm content-area"><h2 class="font-heading font-bold ' + (isBottomLine ? 'text-wall-900' : 'text-wall-gold') + ' mb-3">' + (isBottomLine ? '📌 ' : '') + s.heading + '</h2>' + formatContent(s.content) + '</div>';
-        }).join('');document.getElementById('updateNotice').classList.remove('hidden');document.getElementById('shareButtons').classList.remove('hidden');}catch(e){console.error(e);}}
+        }).join('');document.getElementById('updateNotice').classList.remove('hidden');document.getElementById('shareButtons').classList.remove('hidden');
+        if (isVisualMode()) ensurePdfDisclaimer();}catch(e){console.error(e);}}
 
     function getReviewText(shortVersion) {
       const title = document.getElementById('pageDate').textContent;
@@ -85,24 +133,48 @@
       return text;
     }
 
+
+    function isVisualMode() {
+      return new URLSearchParams(window.location.search).get('visual') === '1';
+    }
+
+    function setupVisualMode() {
+      if (isVisualMode()) document.body.classList.add('visual-review-mode');
+    }
+
+    function ensurePdfDisclaimer() {
+      let disclaimer = document.getElementById('pdfDisclaimer');
+      if (!disclaimer) {
+        disclaimer = document.createElement('div');
+        disclaimer.id = 'pdfDisclaimer';
+        disclaimer.textContent = '⚠️ גילוי נאות: תוכן זה נוצר באמצעות AI לצרכים אינפורמטיביים בלבד. אין באמור ייעוץ השקעות או המלצה לפעולה בניירות ערך.';
+        document.getElementById('contentArea').appendChild(disclaimer);
+      }
+      return disclaimer;
+    }
+
+    function openVisualReview() {
+      const url = new URL(window.location.href);
+      url.searchParams.set('visual', '1');
+      window.open(url.toString(), '_blank');
+    }
+
+    window.addEventListener('afterprint', () => {
+      if (!isVisualMode()) document.body.classList.remove('visual-review-mode');
+    });
+
     function shareWhatsApp() {
       const text = getReviewText(true);
       window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
     }
 
     function exportPDF() {
-      const existing = document.getElementById('pdfDisclaimer');
-      if (!existing) {
-        const disclaimer = document.createElement('div');
-        disclaimer.id = 'pdfDisclaimer';
-        disclaimer.style.cssText = 'margin-top: 20px; padding: 12px; border-top: 1px solid #e2e5ec; font-size: 11px; color: #64748b; text-align: center;';
-        disclaimer.textContent = '⚠️ גילוי נאות: תוכן זה נוצר באמצעות AI לצרכים אינפורמטיביים בלבד. אין באמור ייעוץ השקעות או המלצה לפעולה בניירות ערך.';
-        document.getElementById('contentArea').appendChild(disclaimer);
-      }
-      window.print();
+      ensurePdfDisclaimer();
+      document.body.classList.add('visual-review-mode');
+      setTimeout(() => window.print(), 50);
     }
 
-    init();updateClock();setInterval(updateClock,1000);
+    setupVisualMode();init();updateClock();setInterval(updateClock,1000);
   </script>
 </body>
 </html>
