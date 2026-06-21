@@ -1135,11 +1135,18 @@ CRITICAL — TIME FRAME:
 
 {format_block}
 
-Include 8-14 bullets in the only section, ALL forward-looking:
-1. Key events coming THIS week: Fed decisions, economic data (NFP, CPI, PMI, GDP, PPI), earnings reports, trade/tariff deadlines, geopolitical developments.
+Include 6-10 bullets in the only section, ALL forward-looking and all tied to real catalysts inside THIS week:
+1. Key events coming THIS week: economic data (NFP, CPI, PMI, GDP, PPI), earnings reports, trade/tariff deadlines, geopolitical developments, Fed speakers/minutes/decisions ONLY IF scheduled inside this week.
 2. For each event: specific day and Israel time when known.
 3. Geopolitical risks and what to watch for.
 4. Notable companies expected to report earnings this week.
+
+CRITICAL — DO NOT FILL SPACE WITH NON-EVENTS:
+- Do NOT write bullets whose main message is that something is NOT happening this week.
+- If there is no Fed/FOMC rate decision this week, OMIT Fed/FOMC entirely unless there is a real scheduled Fed speaker, minutes release, testimony, or rate decision inside this week.
+- FORBIDDEN examples: "השבוע לא תתקיים החלטת ריבית", "אין ישיבת FOMC", "המפגש הבא של FOMC יתקיים בחודש הבא".
+- Do NOT mention events outside this week's Friday just to explain their absence.
+- The first bullet must be a real catalyst for this week, not an absence of a catalyst.
 Do NOT include any bullets about last week's performance. Zero backward-looking data.
 
 No Section 2. Do NOT add a "שורה תחתונה" section. Put any concluding insight as a regular bullet inside the only section.
@@ -2201,6 +2208,54 @@ def dedupe_exact_review_lines(result):
 # MAIN
 # ══════════════════════════════════════════════════════════════
 
+def remove_weekly_prep_non_event_bullets(result, review_type):
+    """Remove low-value weekly-prep filler bullets whose main point is that
+    a Fed/FOMC/rate event is NOT happening this week.
+
+    This is deliberately narrow: it does not remove real Fed speakers,
+    minutes, testimony, or an actual rate decision scheduled inside the week.
+    """
+    if review_type != "weekly_prep" or not isinstance(result, dict):
+        return result
+
+    fed_terms = ["פד", "fed", "fomc", "ריבית", "בנק מרכזי", "החלטת ריבית"]
+    no_event_terms = [
+        "לא מתקיימ", "לא תתקיים", "לא צפוי", "לא צפויה", "אין החלטת ריבית",
+        "אין ישיבת", "אין פגישת", "ללא החלטת ריבית", "המפגש הבא", "הפגישה הבאה",
+        "בחודש הבא", "ביולי", "no fomc", "no fed", "no rate decision",
+    ]
+
+    def is_bad_weekly_filler(line):
+        text = debullet(str(line or "")).lower()
+        if not text:
+            return False
+        has_fed = any(term.lower() in text for term in fed_terms)
+        has_no_event = any(term.lower() in text for term in no_event_terms)
+        return has_fed and has_no_event
+
+    removed = 0
+    for section in result.get("sections", []) or []:
+        content = section.get("content", "")
+        if isinstance(content, list):
+            kept = []
+            for line in content:
+                if is_bad_weekly_filler(line):
+                    removed += 1
+                    continue
+                kept.append(line)
+            section["content"] = kept
+        elif isinstance(content, str):
+            kept_lines = []
+            for line in content.split("\n"):
+                if is_bad_weekly_filler(line):
+                    removed += 1
+                    continue
+                kept_lines.append(line)
+            section["content"] = "\n".join(kept_lines).strip()
+    if removed:
+        print(f"  ✅ Removed {removed} weekly-prep non-event filler bullet(s)")
+    return result
+
 def main():
     now = datetime.now(ISR_TZ)
     date_str = now.strftime("%Y-%m-%d")
@@ -2397,6 +2452,10 @@ def main():
     # Layer 7b: remove exact duplicate lines only. No similarity matching, no summarization.
     print("\n── Layer 7b: Remove exact duplicate bullets ──")
     result = dedupe_exact_review_lines(result)
+
+    # Layer 7c: weekly prep only — remove low-value Fed/FOMC non-event filler.
+    print("\n── Layer 7c: Remove weekly-prep non-event filler ──")
+    result = remove_weekly_prep_non_event_bullets(result, REVIEW_TYPE)
 
     # Defensive: strip any internal metadata before persisting
     result = {k: v for k, v in result.items() if not k.startswith("_")}
